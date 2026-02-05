@@ -1,0 +1,38 @@
+# Binaires
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Fichiers de test
+*.test
+*.out
+coverage.html
+
+# Dépendances
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environnement
+.env
+.env.local
+.env.*.local
+
+# Docker
+.docker/
