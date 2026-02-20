@@ -1,0 +1,51 @@
+name: CI/CD Pipeline - WhatsApp Groupe4
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Go 1.22
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Installer les dépendances
+        run: go mod download
+
+      - name: Build api-gateway
+        run: go build ./cmd/api-gateway/...
+
+      - name: Build message-service
+        run: go build ./cmd/message-service/...
+
+      - name: Build user-service
+        run: go build ./cmd/user-service/...
+
+      - name: Lancer les tests
+        run: go test ./...
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image api-gateway
+        run: docker build -t api-gateway ./cmd/api-gateway
+
+      - name: Build image message-service
+        run: docker build -t message-service ./cmd/message-service
+
+      - name: Build image user-service
+        run: docker build -t user-service ./cmd/user-service
