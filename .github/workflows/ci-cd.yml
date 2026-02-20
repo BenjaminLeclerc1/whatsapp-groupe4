@@ -45,6 +45,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build image api-gateway
+        run: docker build -t api-gateway -f cmd/api-gateway/Dockerfile .
         run: docker build -t api-gateway  -f ./cmd/api-gateway/Dockerfile .
 
       - name: Build image message-service
@@ -70,6 +71,9 @@ jobs:
           format: table
           exit-code: "0"
 
+      - name: Build image message-service
+        run: docker build -t message-service -f cmd/message-service/Dockerfile .
+
       - name: Scanner message-service avec Trivy
         uses: aquasecurity/trivy-action@master
         with:
@@ -77,12 +81,18 @@ jobs:
           format: table
           exit-code: "0"
 
+      - name: Build image user-service
+        run: docker build -t user-service -f cmd/user-service/Dockerfile .
+
       - name: Scanner user-service avec Trivy
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: user-service
           format: table
           exit-code: "0"
+
+      - name: Build image notification-service
+        run: docker build -t notification-service -f cmd/notification-service/Dockerfile .
 
       - name: Scanner notification-service avec Trivy
         uses: aquasecurity/trivy-action@master
