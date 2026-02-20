@@ -31,6 +31,9 @@ jobs:
       - name: Build user-service
         run: go build ./cmd/user-service/...
 
+      - name: Build notification-service
+        run: go build ./cmd/notification-service/...
+
       - name: Lancer les tests
         run: go test ./...
 
@@ -49,3 +52,6 @@ jobs:
 
       - name: Build image user-service
         run: docker build -t user-service  -f ./cmd/user-service/Dockerfile .
+
+      - name: Build image notification-service
+        run: docker build -t notification-service  -f ./cmd/notification-service/Dockerfile .

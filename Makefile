@@ -11,6 +11,7 @@ build:
 	$(GO) build -o bin/api-gateway ./cmd/api-gateway
 	$(GO) build -o bin/user-service ./cmd/user-service
 	$(GO) build -o bin/message-service ./cmd/message-service
+	$(GO) build -o bin/notification-service ./cmd/notification-service
 
 run-gateway:
 	$(GO) run ./cmd/api-gateway
@@ -20,6 +21,9 @@ run-user:
 
 run-message:
 	$(GO) run ./cmd/message-service
+
+run-notification:
+	$(GO) run ./cmd/notification-service
 
 test:
 	$(GO) test -v ./...
