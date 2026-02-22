@@ -31,6 +31,9 @@ jobs:
       - name: Build user-service
         run: go build ./cmd/user-service/...
 
+      - name: Build auth-service
+        run: go build ./cmd/auth-service/...
+
       - name: Build notification-service
         run: go build ./cmd/notification-service/...
 
@@ -88,6 +91,16 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: user-service
+          format: table
+          exit-code: "0"
+
+      - name: Build image auth-service
+        run: docker build -t auth-service -f cmd/auth-service/Dockerfile .
+
+      - name: Scanner auth-service avec Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: auth-service
           format: table
           exit-code: "0"
 
