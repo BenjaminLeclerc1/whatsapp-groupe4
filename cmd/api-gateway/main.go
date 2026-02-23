@@ -13,6 +13,7 @@ func main() {
 
 	userServiceURL := getEnv("USER_SERVICE_URL", "http://localhost:8081")
 	messageServiceURL := getEnv("MESSAGE_SERVICE_URL", "http://localhost:8082")
+	notificationServiceURL := getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8083")
 
 	// Routes API Gateway
 	router.GET("/health", func(c *gin.Context) {
@@ -27,11 +28,13 @@ func main() {
 	{
 		api.Any("/users/*path", proxyHandler(userServiceURL))
 		api.Any("/messages/*path", proxyHandler(messageServiceURL))
+		api.Any("/notification/*path", proxyHandler(notificationServiceURL))
 	}
 
 	log.Println("API Gateway démarré sur le port 8080")
 	log.Printf("User Service URL: %s", userServiceURL)
 	log.Printf("Message Service URL: %s", messageServiceURL)
+	log.Printf("Notification Service URL: %s", notificationServiceURL)
 
 	if err := router.Run(":8080"); err != nil {
 		log.Fatalf("Erreur démarrage serveur: %v", err)
