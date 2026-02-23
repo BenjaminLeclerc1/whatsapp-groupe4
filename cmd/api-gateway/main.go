@@ -1,23 +1,29 @@
 package main
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"os"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 )
+
+type Claims struct {
+	UserID string `json:"user_id"`
+	Email  string `json:"email"`
+	jwt.RegisteredClaims
+}
 
 func main() {
 	router := gin.Default()
 
 	userServiceURL := getEnv("USER_SERVICE_URL", "http://localhost:8081")
 	messageServiceURL := getEnv("MESSAGE_SERVICE_URL", "http://localhost:8082")
-<<<<<<< HEAD
 	notificationServiceURL := getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8083")
-=======
 	authServiceURL := getEnv("AUTH_SERVICE_URL", "http://localhost:8084")
->>>>>>> 4c19937 (auth-micro-service creation)
+	jwtSecret := getEnv("JWT_SECRET", "whatsapp-groupe4-secret-change-in-prod")
 
 	// Routes API Gateway
 	router.GET("/health", func(c *gin.Context) {
@@ -30,23 +36,23 @@ func main() {
 	// Proxy vers les microservices
 	api := router.Group("/api/v1")
 	{
-		api.Any("/users/*path", proxyHandler(userServiceURL))
-		api.Any("/messages/*path", proxyHandler(messageServiceURL))
-<<<<<<< HEAD
-		api.Any("/notification/*path", proxyHandler(notificationServiceURL))
-=======
+		// Routes publiques d'authentification (pas de JWT requis ici)
 		api.Any("/auth/*path", proxyHandler(authServiceURL))
->>>>>>> 4c19937 (auth-micro-service creation)
+
+		// Toutes les autres routes /api/v1/** nécessitent un JWT valide
+		protected := api.Group("/", authMiddleware(jwtSecret))
+		{
+			protected.Any("/users/*path", proxyHandler(userServiceURL))
+			protected.Any("/messages/*path", proxyHandler(messageServiceURL))
+			protected.Any("/notification/*path", proxyHandler(notificationServiceURL))
+		}
 	}
 
 	log.Println("API Gateway démarré sur le port 8080")
 	log.Printf("User Service URL: %s", userServiceURL)
 	log.Printf("Message Service URL: %s", messageServiceURL)
-<<<<<<< HEAD
 	log.Printf("Notification Service URL: %s", notificationServiceURL)
-=======
 	log.Printf("Auth Service URL: %s", authServiceURL)
->>>>>>> 4c19937 (auth-micro-service creation)
 
 	if err := router.Run(":8080"); err != nil {
 		log.Fatalf("Erreur démarrage serveur: %v", err)
@@ -68,5 +74,42 @@ func proxyHandler(targetURL string) gin.HandlerFunc {
 			"target_url": targetURL,
 			"path":       path,
 		})
+	}
+}
+
+func authMiddleware(jwtSecret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token manquant ou invalide"})
+			c.Abort()
+			return
+		}
+
+		tokenStr := authHeader[7:]
+		token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(t *jwt.Token) (interface{}, error) {
+			if t.Method != jwt.SigningMethodHS256 {
+				return nil, errors.New("unexpected signing method")
+			}
+			return []byte(jwtSecret), nil
+		})
+		if err != nil || !token.Valid {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token invalide ou expiré"})
+			c.Abort()
+			return
+		}
+
+		claims, ok := token.Claims.(*Claims)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token invalide"})
+			c.Abort()
+			return
+		}
+
+		// On propage l'identité dans le contexte et (plus tard) dans les headers si on met un vrai proxy HTTP.
+		c.Set("user_id", claims.UserID)
+		c.Set("email", claims.Email)
+
+		c.Next()
 	}
 }
