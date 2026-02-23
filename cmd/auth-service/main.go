@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // User représente un utilisateur (inscription/connexion)
@@ -21,10 +22,10 @@ type User struct {
 	CreatedAt string `json:"created_at"`
 }
 
-// account stocke email + mot de passe (plain pour l'instant ; hash prévu sur une autre branche)
+// account stocke email + hash bcrypt du mot de passe (données sensibles chiffrées)
 type account struct {
-	User     User
-	Password string
+	User         User
+	PasswordHash string
 }
 
 // Claims JWT
@@ -97,6 +98,13 @@ func register(jwtSecret string) gin.HandlerFunc {
 			return
 		}
 
+		hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+		if err != nil {
+			mu.Unlock()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors du chiffrement du mot de passe"})
+			return
+		}
+
 		user := User{
 			ID:        uuid.New().String(),
 			Username:  input.Username,
@@ -104,7 +112,7 @@ func register(jwtSecret string) gin.HandlerFunc {
 			Status:    "active",
 			CreatedAt: time.Now().Format(time.RFC3339),
 		}
-		acc := account{User: user, Password: input.Password}
+		acc := account{User: user, PasswordHash: string(hash)}
 		accountsByID[user.ID] = acc
 		accountsByEmail[input.Email] = user.ID
 		mu.Unlock()
@@ -144,7 +152,7 @@ func login(jwtSecret string) gin.HandlerFunc {
 		acc := accountsByID[userID]
 		mu.RUnlock()
 
-		if acc.Password != input.Password {
+		if err := bcrypt.CompareHashAndPassword([]byte(acc.PasswordHash), []byte(input.Password)); err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Email ou mot de passe incorrect"})
 			return
 		}
