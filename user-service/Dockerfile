@@ -1,27 +1,19 @@
-# Build stage
 FROM golang:1.25-alpine AS builder
-
 WORKDIR /app
 
-# Copier les fichiers de dépendances
-COPY go.mod go.sum* ./
+# Copy dependency files
+COPY go.mod go.sum ./
 RUN go mod download
 
-# Copier le code source
+# Copy the entire user-service directory
 COPY . .
 
-# Compiler l'application: Changez le chemin ici
-# Remplacez "./cmd/user-service" par "."
-RUN CGO_ENABLED=0 GOOS=linux go build -o /user-service .
+# Build the binary
+RUN CGO_ENABLED=0 GOOS=linux go build -o user-service .
 
-# Runtime stage
-FROM alpine:3.19
-
-WORKDIR /app
-
-# Copier le binaire compilé
-COPY --from=builder /user-service .
-
-EXPOSE 8081
-
+# Final stage
+FROM alpine:latest
+WORKDIR /root/
+COPY --from=builder /app/user-service .
+EXPOSE 8080
 CMD ["./user-service"]

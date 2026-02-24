@@ -1,167 +1,60 @@
 package main
 
 import (
+	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
+	_ "github.com/lib/pq"
+	
+	// Only import the package you use directly in main.go
+	"whatsapp-groupe4/user-service/handlers"
 )
 
-type User struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Status   string `json:"status"`
-}
-
-var (
-	users = make(map[string]User)
-	mu    sync.RWMutex
-)
+var db *sql.DB
 
 func main() {
-	router := gin.Default()
+	gin.SetMode(gin.ReleaseMode)
 
-	port := getEnv("PORT", "8081")
+	connectDB()
+	defer db.Close()
 
-	// Health check
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":  "healthy",
-			"service": "user-service",
-		})
+	// 2. Call the autoMigrate function from the handlers package
+	// Ensure AutoMigrate is capitalized in user_handler.go
+	handlers.AutoMigrate(db)
+
+	r := gin.New()
+	r.Use(gin.Recovery())
+
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "UP"})
 	})
 
-	// Routes utilisateurs
-	api := router.Group("/api/v1/users")
-	{
-		api.GET("", getAllUsers)
-		api.GET("/:id", getUserByID)
-		api.POST("", createUser)
-		api.PUT("/:id", updateUser)
-		api.DELETE("/:id", deleteUser)
-	}
+	// 3. Call the exported functions from the handlers package
+	r.POST("/register", handlers.Register(db))
+	r.POST("/login", handlers.Login(db))
 
-	log.Printf("User Service démarré sur le port %s", port)
-
-	if err := router.Run(":" + port); err != nil {
-		log.Fatalf("Erreur démarrage serveur: %v", err)
-	}
+	fmt.Println("User Service started on :8080")
+	r.Run(":8080")
 }
 
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
+func connectDB() {
+	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"))
+
+	var err error
+	for i := 0; i < 10; i++ {
+		db, err = sql.Open("postgres", dsn)
+		if err == nil && db.Ping() == nil {
+			log.Println("Database connection established successfully!")
+			return
+		}
+		log.Printf("Database not ready, retrying... (attempt %d/10)", i+1)
+		time.Sleep(3 * time.Second)
 	}
-	return defaultValue
-}
-
-func getAllUsers(c *gin.Context) {
-	mu.RLock()
-	defer mu.RUnlock()
-
-	userList := make([]User, 0, len(users))
-	for _, user := range users {
-		userList = append(userList, user)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"users": userList,
-		"count": len(userList),
-	})
-}
-
-func getUserByID(c *gin.Context) {
-	id := c.Param("id")
-
-	mu.RLock()
-	user, exists := users[id]
-	mu.RUnlock()
-
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Utilisateur non trouvé"})
-		return
-	}
-
-	c.JSON(http.StatusOK, user)
-}
-
-func createUser(c *gin.Context) {
-	var input struct {
-		Username string `json:"username" binding:"required"`
-		Email    string `json:"email" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	user := User{
-		ID:       uuid.New().String(),
-		Username: input.Username,
-		Email:    input.Email,
-		Status:   "active",
-	}
-
-	mu.Lock()
-	users[user.ID] = user
-	mu.Unlock()
-
-	c.JSON(http.StatusCreated, user)
-}
-
-func updateUser(c *gin.Context) {
-	id := c.Param("id")
-
-	mu.Lock()
-	defer mu.Unlock()
-
-	user, exists := users[id]
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Utilisateur non trouvé"})
-		return
-	}
-
-	var input struct {
-		Username string `json:"username"`
-		Email    string `json:"email"`
-		Status   string `json:"status"`
-	}
-
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if input.Username != "" {
-		user.Username = input.Username
-	}
-	if input.Email != "" {
-		user.Email = input.Email
-	}
-	if input.Status != "" {
-		user.Status = input.Status
-	}
-
-	users[id] = user
-	c.JSON(http.StatusOK, user)
-}
-
-func deleteUser(c *gin.Context) {
-	id := c.Param("id")
-
-	mu.Lock()
-	defer mu.Unlock()
-
-	if _, exists := users[id]; !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Utilisateur non trouvé"})
-		return
-	}
-
-	delete(users, id)
-	c.JSON(http.StatusOK, gin.H{"message": "Utilisateur supprimé"})
+	log.Fatalf("Could not connect to database after 10 attempts: %v", err)
 }
