@@ -1,43 +1,72 @@
-version: '3.8'
-
 services:
+  nats:
+    image: nats:latest
+    ports:
+      - "4222:4222"
+    networks:
+      - whatsapp-network
+
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: whatsapp
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: whatsapp
+    ports:
+      - "5432:5432"
+    networks:
+      - whatsapp-network
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
   api-gateway:
     build:
-      context: .
-      dockerfile: ./cmd/api-gateway/Dockerfile
+      context: ./api-gateway
+      dockerfile: Dockerfile
     ports:
       - "8080:8080"
     environment:
-      - USER_SERVICE_URL=http://user-service:8081
-      - MESSAGE_SERVICE_URL=http://message-service:8082
+      - NATS_URL=nats://nats:4222
     depends_on:
-      - user-service
-      - message-service
+      - nats
+      - db
     networks:
       - whatsapp-network
 
   user-service:
     build:
-      context: .
-      dockerfile: ./cmd/user-service/Dockerfile
-    ports:
-      - "8081:8081"
-    environment:
-      - PORT=8081
+      context: ./user-service
+      dockerfile: Dockerfile
     networks:
       - whatsapp-network
 
   message-service:
     build:
-      context: .
-      dockerfile: ./cmd/message-service/Dockerfile
-    ports:
-      - "8082:8082"
+      context: ./message-service
+      dockerfile: Dockerfile
     environment:
-      - PORT=8082
+      - NATS_URL=nats://nats:4222
+    depends_on:
+      - nats
+      - db
+    networks:
+      - whatsapp-network
+
+  presence-service:
+    build:
+      context: ./presence-service
+      dockerfile: Dockerfile
+    environment:
+      - NATS_URL=nats://nats:4222
+    depends_on:
+      - nats
     networks:
       - whatsapp-network
 
 networks:
   whatsapp-network:
     driver: bridge
+
+volumes:
+  db-data:

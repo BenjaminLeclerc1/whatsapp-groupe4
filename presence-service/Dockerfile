@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.22-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ RUN go mod download
 COPY . .
 
 # Compiler l'application
-RUN CGO_ENABLED=0 GOOS=linux go build -o /api-gateway ./cmd/api-gateway
+RUN CGO_ENABLED=0 GOOS=linux go build -o /presence-service .
 
 # Runtime stage
 FROM alpine:3.19
@@ -19,8 +19,8 @@ FROM alpine:3.19
 WORKDIR /app
 
 # Copier le binaire compilé
-COPY --from=builder /api-gateway .
+COPY --from=builder /presence-service .
 
-EXPOSE 8080
+EXPOSE 8081
 
-CMD ["./api-gateway"]
+CMD ["./user-service"]
