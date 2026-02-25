@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"net/http"
 	"os"
 	"sync"
@@ -9,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/whatsapp-groupe4/internal/logger"
 )
 
 type Message struct {
@@ -26,6 +26,9 @@ var (
 )
 
 func main() {
+	logger.Init("message-service")
+	defer logger.Close()
+
 	router := gin.Default()
 
 	port := getEnv("PORT", "8082")
@@ -48,10 +51,10 @@ func main() {
 		api.DELETE("/:id", deleteMessage)
 	}
 
-	log.Printf("Message Service démarré sur le port %s", port)
+	logger.Info("Message Service démarré sur le port %s", port)
 
 	if err := router.Run(":" + port); err != nil {
-		log.Fatalf("Erreur démarrage serveur: %v", err)
+		logger.Fatal("Erreur démarrage serveur: %v", err)
 	}
 }
 

@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"log"
 	"net/http"
 	"os"
 	"sync"
@@ -14,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/whatsapp-groupe4/internal/logger"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -56,10 +56,13 @@ var (
 )
 
 func main() {
+	logger.Init("auth-service")
+	defer logger.Close()
+
 	router := gin.Default()
 
 	port := getEnv("PORT", "8084")
-	jwtSecret := getEnv("JWT_SECRET", "whatsapp-groupe4-secret-change-in-prod")
+	jwtSecret := requireEnv("JWT_SECRET")
 	accessTokenTTL := getEnvDuration("ACCESS_TOKEN_TTL", 24*time.Hour)
 	refreshTokenTTL := getEnvDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour)
 
@@ -85,9 +88,9 @@ func main() {
 		api.GET("/me", authMiddleware(jwtSecret), me())
 	}
 
-	log.Printf("Auth Service démarré sur le port %s", port)
+	logger.Info("Auth Service démarré sur le port %s", port)
 	if err := router.Run(":" + port); err != nil {
-		log.Fatalf("Erreur démarrage serveur: %v", err)
+		logger.Fatal("Erreur démarrage serveur: %v", err)
 	}
 }
 
@@ -96,6 +99,14 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func requireEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		logger.Fatal("Variable d'environnement requise non définie : %s", key)
+	}
+	return value
 }
 
 func getEnvDuration(key string, defaultValue time.Duration) time.Duration {

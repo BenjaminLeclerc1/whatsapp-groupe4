@@ -1,13 +1,13 @@
 package main
 
 import (
-	"log"
 	"net/http"
 	"os"
 	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/whatsapp-groupe4/internal/logger"
 )
 
 type User struct {
@@ -23,6 +23,9 @@ var (
 )
 
 func main() {
+	logger.Init("user-service")
+	defer logger.Close()
+
 	router := gin.Default()
 
 	port := getEnv("PORT", "8081")
@@ -45,10 +48,10 @@ func main() {
 		api.DELETE("/:id", deleteUser)
 	}
 
-	log.Printf("User Service démarré sur le port %s", port)
+	logger.Info("User Service démarré sur le port %s", port)
 
 	if err := router.Run(":" + port); err != nil {
-		log.Fatalf("Erreur démarrage serveur: %v", err)
+		logger.Fatal("Erreur démarrage serveur: %v", err)
 	}
 }
 

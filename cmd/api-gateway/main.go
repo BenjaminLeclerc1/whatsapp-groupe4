@@ -2,12 +2,12 @@ package main
 
 import (
 	"errors"
-	"log"
 	"net/http"
 	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/whatsapp-groupe4/internal/logger"
 )
 
 type Claims struct {
@@ -17,13 +17,16 @@ type Claims struct {
 }
 
 func main() {
+	logger.Init("api-gateway")
+	defer logger.Close()
+
 	router := gin.Default()
 
-	userServiceURL := getEnv("USER_SERVICE_URL", "http://localhost:8081")
-	messageServiceURL := getEnv("MESSAGE_SERVICE_URL", "http://localhost:8082")
-	notificationServiceURL := getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8083")
-	authServiceURL := getEnv("AUTH_SERVICE_URL", "http://localhost:8084")
-	jwtSecret := getEnv("JWT_SECRET", "whatsapp-groupe4-secret-change-in-prod")
+	userServiceURL := requireEnv("USER_SERVICE_URL")
+	messageServiceURL := requireEnv("MESSAGE_SERVICE_URL")
+	notificationServiceURL := requireEnv("NOTIFICATION_SERVICE_URL")
+	authServiceURL := requireEnv("AUTH_SERVICE_URL")
+	jwtSecret := requireEnv("JWT_SECRET")
 
 	// Routes API Gateway
 	router.GET("/health", func(c *gin.Context) {
@@ -48,14 +51,16 @@ func main() {
 		}
 	}
 
-	log.Println("API Gateway démarré sur le port 8080")
-	log.Printf("User Service URL: %s", userServiceURL)
-	log.Printf("Message Service URL: %s", messageServiceURL)
-	log.Printf("Notification Service URL: %s", notificationServiceURL)
-	log.Printf("Auth Service URL: %s", authServiceURL)
+	port := getEnv("API_GATEWAY_PORT", "8080")
 
-	if err := router.Run(":8080"); err != nil {
-		log.Fatalf("Erreur démarrage serveur: %v", err)
+	logger.Info("API Gateway démarré sur le port %s", port)
+	logger.Info("User Service URL: %s", userServiceURL)
+	logger.Info("Message Service URL: %s", messageServiceURL)
+	logger.Info("Notification Service URL: %s", notificationServiceURL)
+	logger.Info("Auth Service URL: %s", authServiceURL)
+
+	if err := router.Run(":" + port); err != nil {
+		logger.Fatal("Erreur démarrage serveur: %v", err)
 	}
 }
 
@@ -64,6 +69,14 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func requireEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		logger.Fatal("Variable d'environnement requise non définie : %s", key)
+	}
+	return value
 }
 
 func proxyHandler(targetURL string) gin.HandlerFunc {
