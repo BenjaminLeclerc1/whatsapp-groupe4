@@ -50,14 +50,16 @@ func main() {
 		}
 	}
 
-	log.Println("API Gateway démarré sur le port 8080")
+	port := getEnv("API_GATEWAY_PORT", "8080")
+
+	log.Printf("API Gateway démarré sur le port %s", port)
 	log.Printf("User Service URL: %s", userServiceURL)
 	log.Printf("Message Service URL: %s", messageServiceURL)
 	log.Printf("Notification Service URL: %s", notificationServiceURL)
 	log.Printf("Auth Service URL: %s", authServiceURL)
 	log.Printf("Channel Service URL: %s", channelServiceURL)
 
-	if err := router.Run(":8080"); err != nil {
+	if err := router.Run(":" + port); err != nil {
 		log.Fatalf("Erreur démarrage serveur: %v", err)
 	}
 }
@@ -67,6 +69,14 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func requireEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("Variable d'environnement requise non définie : %s", key)
+	}
+	return value
 }
 
 func proxyHandler(targetURL string) gin.HandlerFunc {
