@@ -23,6 +23,7 @@ func main() {
 	messageServiceURL := getEnv("MESSAGE_SERVICE_URL", "http://localhost:8082")
 	notificationServiceURL := getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8083")
 	authServiceURL := getEnv("AUTH_SERVICE_URL", "http://localhost:8084")
+	channelServiceURL := getEnv("CHANNEL_SERVICE_URL", "http://localhost:8085")
 	jwtSecret := getEnv("JWT_SECRET", "whatsapp-groupe4-secret-change-in-prod")
 
 	// Routes API Gateway
@@ -45,6 +46,7 @@ func main() {
 			protected.Any("/users/*path", proxyHandler(userServiceURL))
 			protected.Any("/messages/*path", proxyHandler(messageServiceURL))
 			protected.Any("/notification/*path", proxyHandler(notificationServiceURL))
+			protected.Any("/channels/*path", proxyHandler(channelServiceURL))
 		}
 	}
 
@@ -53,6 +55,7 @@ func main() {
 	log.Printf("Message Service URL: %s", messageServiceURL)
 	log.Printf("Notification Service URL: %s", notificationServiceURL)
 	log.Printf("Auth Service URL: %s", authServiceURL)
+	log.Printf("Channel Service URL: %s", channelServiceURL)
 
 	if err := router.Run(":8080"); err != nil {
 		log.Fatalf("Erreur démarrage serveur: %v", err)
