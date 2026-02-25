@@ -2,12 +2,12 @@ package main
 
 import (
 	"errors"
-	"log"
 	"net/http"
 	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/whatsapp-groupe4/internal/logger"
 )
 
 type Claims struct {
@@ -17,6 +17,9 @@ type Claims struct {
 }
 
 func main() {
+	logger.Init("api-gateway")
+	defer logger.Close()
+
 	router := gin.Default()
 
 	userServiceURL := getEnv("USER_SERVICE_URL", "http://localhost:8081")

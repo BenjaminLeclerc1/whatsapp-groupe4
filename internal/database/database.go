@@ -2,11 +2,11 @@ package database
 
 import (
 	"context"
-	"log"
 	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/whatsapp-groupe4/internal/logger"
 )
 
 var DB *pgxpool.Pool
@@ -43,7 +43,7 @@ func Connect() error {
 	}
 
 	DB = pool
-	log.Println("Connexion à PostgreSQL établie")
+	logger.Info("Connexion à PostgreSQL établie")
 	return nil
 }
 
@@ -51,6 +51,6 @@ func Connect() error {
 func Close() {
 	if DB != nil {
 		DB.Close()
-		log.Println("Connexion PostgreSQL fermée")
+		logger.Info("Connexion PostgreSQL fermée")
 	}
 }

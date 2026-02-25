@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/whatsapp-groupe4/internal/logger"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/whatsapp-groupe4/internal/messages"
 	"github.com/whatsapp-groupe4/internal/middleware"
@@ -24,6 +26,11 @@ func main() {
 	}
 	defer pool.Close()
 
+func main() {
+	logger.Init("message-service")
+	defer logger.Close()
+
+	router := gin.Default()
 	repo := messages.NewRepository(pool)
 	svc := messages.NewService(repo)
 	handler := messages.NewHandler(svc)
@@ -52,6 +59,10 @@ func main() {
 	api := router.Group("/api/v1", middleware.ExtractUserID(), rateLimiter.Middleware())
 	handler.RegisterRoutes(api)
 
+	logger.Info("Message Service démarré sur le port %s", port)
+
+	if err := router.Run(":" + port); err != nil {
+		logger.Fatal("Erreur démarrage serveur: %v", err)
 	srv := &http.Server{
 		Addr:           ":" + port,
 		Handler:        router,

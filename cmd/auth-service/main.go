@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"log"
 	"net/http"
 	"os"
 	"sync"
@@ -14,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/whatsapp-groupe4/internal/logger"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -56,6 +56,9 @@ var (
 )
 
 func main() {
+	logger.Init("auth-service")
+	defer logger.Close()
+
 	router := gin.Default()
 
 	port := getEnv("PORT", "8084")
@@ -85,9 +88,9 @@ func main() {
 		api.GET("/me", authMiddleware(jwtSecret), me())
 	}
 
-	log.Printf("Auth Service démarré sur le port %s", port)
+	logger.Info("Auth Service démarré sur le port %s", port)
 	if err := router.Run(":" + port); err != nil {
-		log.Fatalf("Erreur démarrage serveur: %v", err)
+		logger.Fatal("Erreur démarrage serveur: %v", err)
 	}
 }
 
