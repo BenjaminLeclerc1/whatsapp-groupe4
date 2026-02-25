@@ -19,11 +19,11 @@ type Claims struct {
 func main() {
 	router := gin.Default()
 
-	userServiceURL := getEnv("USER_SERVICE_URL", "http://localhost:8081")
-	messageServiceURL := getEnv("MESSAGE_SERVICE_URL", "http://localhost:8082")
-	notificationServiceURL := getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8083")
-	authServiceURL := getEnv("AUTH_SERVICE_URL", "http://localhost:8084")
-	jwtSecret := getEnv("JWT_SECRET", "whatsapp-groupe4-secret-change-in-prod")
+	userServiceURL := requireEnv("USER_SERVICE_URL")
+	messageServiceURL := requireEnv("MESSAGE_SERVICE_URL")
+	notificationServiceURL := requireEnv("NOTIFICATION_SERVICE_URL")
+	authServiceURL := requireEnv("AUTH_SERVICE_URL")
+	jwtSecret := requireEnv("JWT_SECRET")
 
 	// Routes API Gateway
 	router.GET("/health", func(c *gin.Context) {
@@ -48,13 +48,15 @@ func main() {
 		}
 	}
 
-	log.Println("API Gateway démarré sur le port 8080")
+	port := getEnv("API_GATEWAY_PORT", "8080")
+
+	log.Printf("API Gateway démarré sur le port %s", port)
 	log.Printf("User Service URL: %s", userServiceURL)
 	log.Printf("Message Service URL: %s", messageServiceURL)
 	log.Printf("Notification Service URL: %s", notificationServiceURL)
 	log.Printf("Auth Service URL: %s", authServiceURL)
 
-	if err := router.Run(":8080"); err != nil {
+	if err := router.Run(":" + port); err != nil {
 		log.Fatalf("Erreur démarrage serveur: %v", err)
 	}
 }
@@ -64,6 +66,14 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func requireEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("Variable d'environnement requise non définie : %s", key)
+	}
+	return value
 }
 
 func proxyHandler(targetURL string) gin.HandlerFunc {

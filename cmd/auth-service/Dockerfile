@@ -18,6 +18,4 @@ COPY --from=builder /auth-service .
 
 EXPOSE 8084
 
-ENV PORT=8084
-
 CMD ["./auth-service"]

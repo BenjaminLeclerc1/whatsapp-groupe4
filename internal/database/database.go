@@ -15,7 +15,7 @@ var DB *pgxpool.Pool
 func Connect() error {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
-		databaseURL = "postgres://whatsapp:whatsapp_secret@localhost:5432/whatsapp_db?sslmode=disable"
+		log.Fatal("DATABASE_URL non définie. Vérifiez votre fichier .env")
 	}
 
 	config, err := pgxpool.ParseConfig(databaseURL)

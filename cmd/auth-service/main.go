@@ -59,7 +59,7 @@ func main() {
 	router := gin.Default()
 
 	port := getEnv("PORT", "8084")
-	jwtSecret := getEnv("JWT_SECRET", "whatsapp-groupe4-secret-change-in-prod")
+	jwtSecret := requireEnv("JWT_SECRET")
 	accessTokenTTL := getEnvDuration("ACCESS_TOKEN_TTL", 24*time.Hour)
 	refreshTokenTTL := getEnvDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour)
 
@@ -96,6 +96,14 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func requireEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("Variable d'environnement requise non définie : %s", key)
+	}
+	return value
 }
 
 func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
