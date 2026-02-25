@@ -1,0 +1,34 @@
+---
+description: Style de code Go, architecture et bonnes pratiques
+globs: "**/*.go"
+alwaysApply: false
+---
+
+# Standards Go
+
+## Architecture par service
+
+Chaque service suit le pattern **Handler -> Service -> Repository** :
+
+- `internal/<domain>/model.go` : structs, DTOs requête/réponse avec tags `json` et `binding`
+- `internal/<domain>/repository.go` : interface `Repository` + implémentation PostgreSQL (`pgxpool`)
+- `internal/<domain>/service.go` : interface `Service` + logique métier et contrôle d'accès
+- `internal/<domain>/handler.go` : endpoints HTTP Gin, validation des inputs, mapping erreurs -> codes HTTP
+- `cmd/<service>/main.go` : point d'entrée, init DB, wiring des dépendances, graceful shutdown
+
+## Conventions de code
+
+- Utiliser les interfaces pour `Service` et `Repository` (testabilité)
+- Contextes avec timeout sur chaque requête DB : `context.WithTimeout(ctx, duration)`
+- Erreurs domaine sous forme de `fmt.Errorf("forbidden: ...")` ou `fmt.Errorf("not found")`
+- `writeServiceError()` dans le handler pour mapper les erreurs vers les codes HTTP
+- Middleware `ExtractUserID()` pour l'authentification via header `X-User-ID`
+- Validation UUID via `middleware.IsValidUUID()` avant tout appel service
+- Pagination cursor-based via `middleware.ParsePagination()`
+
+## Point d'entrée (main.go)
+
+- Connexion DB avec `pgxpool` et pool configuré
+- Graceful shutdown avec `signal.NotifyContext`
+- `http.Server` avec `ReadTimeout`, `WriteTimeout`, `IdleTimeout`, `MaxHeaderBytes`
+- Health check endpoint `/health` avec vérification DB

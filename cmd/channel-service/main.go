@@ -11,12 +11,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/whatsapp-groupe4/internal/messages"
+	"github.com/whatsapp-groupe4/internal/channels"
 	"github.com/whatsapp-groupe4/internal/middleware"
 )
 
 func main() {
-	port := getEnv("PORT", "8082")
+	port := getEnv("PORT", "8085")
 
 	pool, err := initDB()
 	if err != nil {
@@ -24,12 +24,9 @@ func main() {
 	}
 	defer pool.Close()
 
-	repo := messages.NewRepository(pool)
-	svc := messages.NewService(repo)
-	handler := messages.NewHandler(svc)
-
-	rateLimiter := middleware.NewRateLimiter(60, time.Minute)
-	defer rateLimiter.Stop()
+	repo := channels.NewRepository(pool)
+	svc := channels.NewService(repo)
+	handler := channels.NewHandler(svc)
 
 	router := gin.Default()
 
@@ -44,28 +41,28 @@ func main() {
 
 		c.JSON(http.StatusOK, gin.H{
 			"status":   "healthy",
-			"service":  "message-service",
+			"service":  "channel-service",
 			"database": dbStatus,
 		})
 	})
 
-	api := router.Group("/api/v1", middleware.ExtractUserID(), rateLimiter.Middleware())
+	api := router.Group("/api/v1", middleware.ExtractUserID())
 	handler.RegisterRoutes(api)
 
 	srv := &http.Server{
-		Addr:           ":" + port,
-		Handler:        router,
-		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   15 * time.Second,
-		IdleTimeout:    120 * time.Second,
-		MaxHeaderBytes: 1 << 16, // 64KB
+		Addr:         ":" + port,
+		Handler:      router,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
+	// Graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	go func() {
-		log.Printf("Message Service started on port %s", port)
+		log.Printf("Channel Service started on port %s", port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server error: %v", err)
 		}
@@ -81,7 +78,7 @@ func main() {
 		log.Fatalf("forced shutdown: %v", err)
 	}
 
-	log.Println("Message Service stopped")
+	log.Println("Channel Service stopped")
 }
 
 func initDB() (*pgxpool.Pool, error) {
@@ -92,6 +89,7 @@ func initDB() (*pgxpool.Pool, error) {
 		return nil, err
 	}
 
+	// Pool tuned for high concurrency
 	config.MaxConns = 50
 	config.MinConns = 10
 	config.MaxConnLifetime = time.Hour

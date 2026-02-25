@@ -19,11 +19,12 @@ type Claims struct {
 func main() {
 	router := gin.Default()
 
-	userServiceURL := requireEnv("USER_SERVICE_URL")
-	messageServiceURL := requireEnv("MESSAGE_SERVICE_URL")
-	notificationServiceURL := requireEnv("NOTIFICATION_SERVICE_URL")
-	authServiceURL := requireEnv("AUTH_SERVICE_URL")
-	jwtSecret := requireEnv("JWT_SECRET")
+	userServiceURL := getEnv("USER_SERVICE_URL", "http://localhost:8081")
+	messageServiceURL := getEnv("MESSAGE_SERVICE_URL", "http://localhost:8082")
+	notificationServiceURL := getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8083")
+	authServiceURL := getEnv("AUTH_SERVICE_URL", "http://localhost:8084")
+	channelServiceURL := getEnv("CHANNEL_SERVICE_URL", "http://localhost:8085")
+	jwtSecret := getEnv("JWT_SECRET", "whatsapp-groupe4-secret-change-in-prod")
 
 	// Routes API Gateway
 	router.GET("/health", func(c *gin.Context) {
@@ -45,6 +46,7 @@ func main() {
 			protected.Any("/users/*path", proxyHandler(userServiceURL))
 			protected.Any("/messages/*path", proxyHandler(messageServiceURL))
 			protected.Any("/notification/*path", proxyHandler(notificationServiceURL))
+			protected.Any("/channels/*path", proxyHandler(channelServiceURL))
 		}
 	}
 
@@ -55,6 +57,7 @@ func main() {
 	log.Printf("Message Service URL: %s", messageServiceURL)
 	log.Printf("Notification Service URL: %s", notificationServiceURL)
 	log.Printf("Auth Service URL: %s", authServiceURL)
+	log.Printf("Channel Service URL: %s", channelServiceURL)
 
 	if err := router.Run(":" + port); err != nil {
 		log.Fatalf("Erreur démarrage serveur: %v", err)

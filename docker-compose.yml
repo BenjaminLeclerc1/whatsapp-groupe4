@@ -8,16 +8,18 @@ services:
     ports:
       - "${API_GATEWAY_PORT:-8080}:${API_GATEWAY_PORT:-8080}"
     environment:
-      - USER_SERVICE_URL=http://user-service:${USER_SERVICE_PORT:-8081}
-      - MESSAGE_SERVICE_URL=http://message-service:${MESSAGE_SERVICE_PORT:-8082}
-      - NOTIFICATION_SERVICE_URL=http://notification-service:${NOTIFICATION_SERVICE_PORT:-8083}
-      - AUTH_SERVICE_URL=http://auth-service:${AUTH_SERVICE_PORT:-8084}
-      - JWT_SECRET=${JWT_SECRET}
+      - USER_SERVICE_URL=http://user-service:8081
+      - MESSAGE_SERVICE_URL=http://message-service:8082
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8083
+      - AUTH_SERVICE_URL=http://auth-service:8084
+      - CHANNEL_SERVICE_URL=http://channel-service:8085
+      - JWT_SECRET=${JWT_SECRET:-whatsapp-groupe4-secret-change-in-prod}
     depends_on:
       - user-service
       - message-service
       - notification-service
       - auth-service
+      - channel-service
     networks:
       - whatsapp-network
 
@@ -72,6 +74,44 @@ services:
     networks:
       - whatsapp-network
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: whatsapp-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: whatsapp
+      POSTGRES_PASSWORD: whatsapp_secret
+      POSTGRES_DB: whatsapp_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - whatsapp-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U whatsapp -d whatsapp_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  channel-service:
+    build:
+      context: .
+      dockerfile: ./cmd/channel-service/Dockerfile
+    ports:
+      - "8085:8085"
+    environment:
+      - PORT=8085
+      - DATABASE_URL=postgres://whatsapp:whatsapp_secret@postgres:5432/whatsapp_db?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - whatsapp-network
+
 networks:
   whatsapp-network:
     driver: bridge
+
+volumes:
+  postgres_data:
