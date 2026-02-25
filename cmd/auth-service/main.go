@@ -104,7 +104,7 @@ func getEnv(key, defaultValue string) string {
 func requireEnv(key string) string {
 	value := os.Getenv(key)
 	if value == "" {
-		logger.Fatal("Variable d'environnement requise non définie : %s", key)
+		log.Fatalf("Variable d'environnement requise non définie : %s", key)
 	}
 	return value
 }

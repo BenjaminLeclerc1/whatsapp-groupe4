@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.22-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,5 @@ WORKDIR /app
 COPY --from=builder /auth-service .
 
 EXPOSE 8084
-
-ENV PORT=8084
 
 CMD ["./auth-service"]

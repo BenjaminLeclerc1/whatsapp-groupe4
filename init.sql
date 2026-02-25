@@ -10,11 +10,14 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table des chats
+-- Table des chats (channels/salons)
 CREATE TABLE IF NOT EXISTS chats (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255),
+    description VARCHAR(500) DEFAULT '',
     is_group BOOLEAN DEFAULT FALSE,
+    owner_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    max_members INT DEFAULT 1000,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -41,6 +44,11 @@ CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
 CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages(sender_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
 CREATE INDEX IF NOT EXISTS idx_chat_participants_user_id ON chat_participants(user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_participants_chat_id ON chat_participants(chat_id);
+CREATE INDEX IF NOT EXISTS idx_chats_owner_id ON chats(owner_id);
+
+-- Composite index for keyset pagination on messages
+CREATE INDEX IF NOT EXISTS idx_messages_chat_created_id ON messages(chat_id, created_at DESC, id DESC);
 
 -- Fonction pour mettre à jour updated_at automatiquement
 CREATE OR REPLACE FUNCTION update_updated_at_column()
