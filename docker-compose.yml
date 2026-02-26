@@ -1,66 +1,73 @@
+# 1. Define the anchor first
+x-base-app: &base-app
+  restart: unless-stopped
+  environment:
+    DB_HOST: db
+    DB_PORT: 5432
+    DB_USER: whatsapp
+    DB_PASSWORD: password
+    DB_NAME: whatsapp
+    NATS_URL: nats://nats:4222
+  depends_on:
+    db: { condition: service_healthy }
+    nats: { condition: service_started }
+  networks:
+    - whatsapp-network
+
+# 2. Services use the anchor after it has been defined
 services:
   nats:
     image: nats:latest
-    ports:
-      - "4222:4222"
+    restart: unless-stopped
     networks:
       - whatsapp-network
 
   db:
     image: postgres:15
-    restart: always
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
     environment:
       POSTGRES_USER: whatsapp
       POSTGRES_PASSWORD: password
       POSTGRES_DB: whatsapp
-    ports:
-      - "5432:5432"
     networks:
       - whatsapp-network
     volumes:
       - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U whatsapp -d whatsapp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  user-service:
+    <<: *base-app
+    build:
+      context: .
+      dockerfile: user-service/Dockerfile
+
+  message-service:
+    <<: *base-app
+    build:
+      context: .
+      dockerfile: message-service/Dockerfile
 
   api-gateway:
     build:
-      context: ./api-gateway
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
-      - NATS_URL=nats://nats:4222
+      NATS_URL: nats://nats:4222
+      USER_SERVICE_URL: http://user-service:8080
+      MESSAGE_SERVICE_URL: http://message-service:8082
     depends_on:
       - nats
-      - db
-    networks:
-      - whatsapp-network
-
-  user-service:
-    build:
-      context: ./user-service
-      dockerfile: Dockerfile
-    networks:
-      - whatsapp-network
-
-  message-service:
-    build:
-      context: ./message-service
-      dockerfile: Dockerfile
-    environment:
-      - NATS_URL=nats://nats:4222
-    depends_on:
-      - nats
-      - db
-    networks:
-      - whatsapp-network
-
-  presence-service:
-    build:
-      context: ./presence-service
-      dockerfile: Dockerfile
-    environment:
-      - NATS_URL=nats://nats:4222
-    depends_on:
-      - nats
+      - user-service
+      - message-service
     networks:
       - whatsapp-network
 

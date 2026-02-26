@@ -1,55 +1,27 @@
-.PHONY: all build run test clean docker-build docker-up docker-down
+# Root Makefile for whatsapp-group4
+.PHONY: gen-proto clean
 
-# Variables
-GO=go
-DOCKER_COMPOSE=docker-compose
+# Directory containing your shared proto files
+PROTO_DIR := proto
+# Directory where you want the generated Go code
+GEN_DIR := gen/go
 
-# Commandes principales
-all: build
+# Find all .proto files
+PROTO_FILES := $(shell find $(PROTO_DIR) -name "*.proto")
 
-build:
-	$(GO) build -o bin/api-gateway ./cmd/api-gateway
-	$(GO) build -o bin/user-service ./cmd/user-service
-	$(GO) build -o bin/message-service ./cmd/message-service
-
-run-gateway:
-	$(GO) run ./cmd/api-gateway
-
-run-user:
-	$(GO) run ./cmd/user-service
-
-run-message:
-	$(GO) run ./cmd/message-service
-
-test:
-	$(GO) test -v ./...
+gen-proto:
+	@echo "Generating Go code from protobufs..."
+	@mkdir -p $(GEN_DIR)
+	@for file in $(PROTO_FILES); do \
+		protoc --proto_path=$(PROTO_DIR) \
+		       --go_out=$(GEN_DIR) \
+		       --go_opt=paths=source_relative \
+		       --go-grpc_out=$(GEN_DIR) \
+		       --go-grpc_opt=paths=source_relative \
+		       $$file; \
+	done
+	@echo "Generation complete."
 
 clean:
-	rm -rf bin/
-	$(GO) clean
-
-# Commandes Docker
-docker-build:
-	$(DOCKER_COMPOSE) build
-
-docker-up:
-	$(DOCKER_COMPOSE) up -d
-
-docker-down:
-	$(DOCKER_COMPOSE) down
-
-docker-logs:
-	$(DOCKER_COMPOSE) logs -f
-
-# Télécharger les dépendances
-deps:
-	$(GO) mod download
-	$(GO) mod tidy
-
-# Formater le code
-fmt:
-	$(GO) fmt ./...
-
-# Linter
-lint:
-	golangci-lint run ./...
+	@echo "Cleaning generated files..."
+	@rm -rf $(GEN_DIR)

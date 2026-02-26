@@ -1,156 +1,119 @@
+// package main
+
+// import (
+//     "log"
+//     "os"
+//     "github.com/gin-gonic/gin"
+//     "github.com/nats-io/nats.go" // Important: Import the NATS driver
+//     "whatsapp-group4/message-service/handlers"
+//     "whatsapp-group4/message-service/repository"
+// )
+
+
+// func main() {
+//     // 1. Initialize NATS using env var
+//     natsURL := os.Getenv("NATS_URL")
+//     if natsURL == "" { natsURL = nats.DefaultURL }
+//     nc, err := nats.Connect(natsURL)
+//     if err != nil { log.Fatal(err) }
+//     defer nc.Close()
+
+//     // 2. Initialize Repo and Handler
+//     repo := repository.NewMessageRepo()
+//     handler := &handlers.MessageHandler{
+//         Repo:       repo,
+//         NATSClient: nc,
+//     }
+    
+//     // 3. Setup Router
+//     router := gin.Default()
+    
+//     // Define routes
+//     msgGroup := router.Group("/messages")
+//     {
+//         msgGroup.POST("/", handler.CreateMessage)
+//         msgGroup.GET("/chat/:chat_id", handler.GetChatHistory)
+//         msgGroup.GET("/:id", handler.GetMessage)
+//         msgGroup.DELETE("/:id", handler.DeleteMessage)
+//     }
+
+//     // 4. Run on port 8082 as planned
+//     router.Run(":8082")
+// }
+
 package main
 
 import (
+	"database/sql"
+	"fmt"
 	"log"
-	"net/http"
 	"os"
-	"sync"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-)
-
-type Message struct {
-	ID        string    `json:"id"`
-	SenderID  string    `json:"sender_id"`
-	Content   string    `json:"content"`
-	ChatID    string    `json:"chat_id"`
-	CreatedAt time.Time `json:"created_at"`
-	Status    string    `json:"status"`
-}
-
-var (
-	messages = make(map[string]Message)
-	mu       sync.RWMutex
+	_ "github.com/lib/pq" // Required for PostgreSQL driver
+	"github.com/nats-io/nats.go"
+	"whatsapp-groupe4/message-service/handlers"
+	"whatsapp-groupe4/message-service/repository"
 )
 
 func main() {
+	// 1. Setup Database Connection
+	dbInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		os.Getenv("DB_HOST"), os.Getenv("DB_PORT"), os.Getenv("DB_USER"),
+		os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"))
+
+	db, err := sql.Open("postgres", dbInfo)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	// 2. Automatically create the table if it doesn't exist
+	createTableQuery := `
+	CREATE TABLE IF NOT EXISTS messages (
+		id VARCHAR(255) PRIMARY KEY,
+		sender_id VARCHAR(255) NOT NULL,
+		chat_id VARCHAR(255) NOT NULL,
+		content TEXT NOT NULL,
+		status VARCHAR(50),
+		created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+	);`
+	_, err = db.Exec(createTableQuery)
+	if err != nil {
+		log.Fatalf("Failed to create table: %v", err)
+	}
+
+	// 3. Initialize NATS
+	natsURL := os.Getenv("NATS_URL")
+	if natsURL == "" {
+		natsURL = nats.DefaultURL
+	}
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer nc.Close()
+
+	// 4. Initialize Repo (Passing db connection) and Handler
+	repo := repository.NewMessageRepo(db)
+	handler := &handlers.MessageHandler{
+		Repo:       repo,
+		NATSClient: nc,
+	}
+
+	// 5. Setup Router
 	router := gin.Default()
-
-	port := getEnv("PORT", "8082")
-
-	// Health check
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":  "healthy",
-			"service": "message-service",
-		})
-	})
-
-	// Routes messages
-	api := router.Group("/api/v1/messages")
+	msgGroup := router.Group("/messages")
 	{
-		api.GET("", getAllMessages)
-		api.GET("/:id", getMessageByID)
-		api.GET("/chat/:chatId", getMessagesByChat)
-		api.POST("", createMessage)
-		api.DELETE("/:id", deleteMessage)
+		msgGroup.POST("/send", handler.CreateMessage)
+		msgGroup.GET("/chat/:chat_id", handler.GetChatHistory)
+		msgGroup.GET("/:id", handler.GetMessage)
+		msgGroup.DELETE("/:id", handler.DeleteMessage)
 	}
 
-	log.Printf("Message Service démarré sur le port %s", port)
-
-	if err := router.Run(":" + port); err != nil {
-		log.Fatalf("Erreur démarrage serveur: %v", err)
-	}
+	// Print all registered routes to the console
+for _, route := range router.Routes() {
+    log.Printf("Method: %s, Path: %s\n", route.Method, route.Path)
 }
-
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
-func getAllMessages(c *gin.Context) {
-	mu.RLock()
-	defer mu.RUnlock()
-
-	messageList := make([]Message, 0, len(messages))
-	for _, msg := range messages {
-		messageList = append(messageList, msg)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"messages": messageList,
-		"count":    len(messageList),
-	})
-}
-
-func getMessageByID(c *gin.Context) {
-	id := c.Param("id")
-
-	mu.RLock()
-	msg, exists := messages[id]
-	mu.RUnlock()
-
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Message non trouvé"})
-		return
-	}
-
-	c.JSON(http.StatusOK, msg)
-}
-
-func getMessagesByChat(c *gin.Context) {
-	chatID := c.Param("chatId")
-
-	mu.RLock()
-	defer mu.RUnlock()
-
-	chatMessages := make([]Message, 0)
-	for _, msg := range messages {
-		if msg.ChatID == chatID {
-			chatMessages = append(chatMessages, msg)
-		}
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"messages": chatMessages,
-		"chat_id":  chatID,
-		"count":    len(chatMessages),
-	})
-}
-
-func createMessage(c *gin.Context) {
-	var input struct {
-		SenderID string `json:"sender_id" binding:"required"`
-		Content  string `json:"content" binding:"required"`
-		ChatID   string `json:"chat_id" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	msg := Message{
-		ID:        uuid.New().String(),
-		SenderID:  input.SenderID,
-		Content:   input.Content,
-		ChatID:    input.ChatID,
-		CreatedAt: time.Now(),
-		Status:    "sent",
-	}
-
-	mu.Lock()
-	messages[msg.ID] = msg
-	mu.Unlock()
-
-	c.JSON(http.StatusCreated, msg)
-}
-
-func deleteMessage(c *gin.Context) {
-	id := c.Param("id")
-
-	mu.Lock()
-	defer mu.Unlock()
-
-	if _, exists := messages[id]; !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Message non trouvé"})
-		return
-	}
-
-	delete(messages, id)
-	c.JSON(http.StatusOK, gin.H{"message": "Message supprimé"})
+	router.Run(":8082")
 }

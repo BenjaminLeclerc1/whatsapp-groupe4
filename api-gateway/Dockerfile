@@ -1,26 +1,17 @@
-# Build stage
-FROM golang:1.25-alpine AS builder
-
+# 1. Builder stage
+FROM golang:1.26-alpine AS builder
 WORKDIR /app
-
-# Copier les fichiers de dépendances
-COPY go.mod go.sum* ./
+COPY go.mod go.sum ./
 RUN go mod download
-
-# Copier le code source
 COPY . .
+# Build output to a specific name that isn't the same as a source folder
+RUN CGO_ENABLED=0 GOOS=linux go build -o /api-gateway-bin ./api-gateway
 
-# Compiler l'application
-RUN CGO_ENABLED=0 GOOS=linux go build -o /api-gateway
-
-# Runtime stage
+# 2. Final stage
 FROM alpine:3.19
-
 WORKDIR /app
-
-# Copier le binaire compilé
-COPY --from=builder /api-gateway .
-
+# Copy the renamed binary
+COPY --from=builder /api-gateway-bin .
 EXPOSE 8080
-
-CMD ["./api-gateway"]
+# Execute the specific binary
+CMD ["./api-gateway-bin"]

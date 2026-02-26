@@ -35,6 +35,7 @@ func main() {
 	})
 
 	// 3. Call the exported functions from the handlers package
+	// userGroup := router.Group("/users")
 	r.POST("/register", handlers.Register(db))
 	r.POST("/login", handlers.Login(db))
 
