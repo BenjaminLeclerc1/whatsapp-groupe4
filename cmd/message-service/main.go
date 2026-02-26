@@ -10,27 +10,28 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"github.com/whatsapp-groupe4/internal/logger"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/whatsapp-groupe4/internal/logger"
 	"github.com/whatsapp-groupe4/internal/messages"
 	"github.com/whatsapp-groupe4/internal/middleware"
 )
 
 func main() {
+	// 1. Initialize Logger and Config
+	logger.Init("message-service")
+	defer logger.Close()
 	port := getEnv("PORT", "8082")
 
+	// 2. Initialize Database
 	pool, err := initDB()
 	if err != nil {
 		log.Fatalf("database connection failed: %v", err)
 	}
 	defer pool.Close()
 
-func main() {
-	logger.Init("message-service")
-	defer logger.Close()
-
+	// 3. Setup Router & Middleware
 	router := gin.Default()
+	
 	repo := messages.NewRepository(pool)
 	svc := messages.NewService(repo)
 	handler := messages.NewHandler(svc)
@@ -38,8 +39,7 @@ func main() {
 	rateLimiter := middleware.NewRateLimiter(60, time.Minute)
 	defer rateLimiter.Stop()
 
-	router := gin.Default()
-
+	// 4. Routes
 	router.GET("/health", func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
 		defer cancel()
@@ -48,7 +48,6 @@ func main() {
 		if err := pool.Ping(ctx); err != nil {
 			dbStatus = "disconnected"
 		}
-
 		c.JSON(http.StatusOK, gin.H{
 			"status":   "healthy",
 			"service":  "message-service",
@@ -59,37 +58,36 @@ func main() {
 	api := router.Group("/api/v1", middleware.ExtractUserID(), rateLimiter.Middleware())
 	handler.RegisterRoutes(api)
 
-	logger.Info("Message Service démarré sur le port %s", port)
-
-	if err := router.Run(":" + port); err != nil {
-		logger.Fatal("Erreur démarrage serveur: %v", err)
+	// 5. Graceful Shutdown Setup
 	srv := &http.Server{
 		Addr:           ":" + port,
 		Handler:        router,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   15 * time.Second,
 		IdleTimeout:    120 * time.Second,
-		MaxHeaderBytes: 1 << 16, // 64KB
+		MaxHeaderBytes: 1 << 16,
 	}
 
+	// Channel to listen for interrupt signals
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	go func() {
-		log.Printf("Message Service started on port %s", port)
+		logger.Info("Message Service started on port %s", port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+			logger.Fatal("Server error: %v", err)
 		}
 	}()
 
+	// Wait for signal
 	<-ctx.Done()
-	log.Println("shutting down gracefully...")
+	log.Println("Shutting down gracefully...")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("forced shutdown: %v", err)
+		log.Fatalf("Forced shutdown: %v", err)
 	}
 
 	log.Println("Message Service stopped")

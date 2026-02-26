@@ -170,22 +170,23 @@
 // }
 
 
+
 package main
 
 import (
-	"context"
+	// "context"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/whatsapp-groupe4/internal/cache"
-	"github.com/whatsapp-groupe4/internal/database"
 	"github.com/whatsapp-groupe4/internal/logger"
+	"github.com/whatsapp-groupe4/internal/sharding"
 )
 
-// User struct represents the database and JSON model
 type User struct {
 	ID       string `json:"id"`
 	Username string `json:"username"`
@@ -193,106 +194,52 @@ type User struct {
 	Status   string `json:"status"`
 }
 
-// App holds our application dependencies (Jira: pgxpool & Redis)
 type App struct {
-	DB    *database.PostgresDB
-	Redis *cache.RedisClient
+	Shards *sharding.ShardManager
+	Redis  *cache.RedisClient
 }
 
 func main() {
-	// 1. Initialize Logger
 	logger.Init("user-service")
 	defer logger.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	// 1. Initialize Shards
+	shardURLs := strings.Split(os.Getenv("SHARD_URLS"), ",")
+	if len(shardURLs) == 0 || shardURLs[0] == "" {
+		logger.Fatal("SHARD_URLS env variable is required")
+	}
 
-	// 2. Initialize pgxpool (Jira Ticket: Connection pooling)
-	db := database.NewPostgresPool(ctx)
-	defer db.Close()
+	shardMgr, err := sharding.NewShardManager(shardURLs)
+	if err != nil {
+		logger.Fatal("Failed to init shards: %v", err)
+	}
 
-	// 3. Initialize Redis (Jira Ticket: Setup Redis pour cache et sessions)
-	redisAddr := getEnv("REDIS_ADDR", "redis:6379")
-	rdb := cache.NewRedisClient(redisAddr)
+	// 2. Initialize Redis
+	rdb := cache.NewRedisClient(getEnv("REDIS_ADDR", "redis:6379"))
 
 	app := &App{
-		DB:    db,
-		Redis: rdb,
+		Shards: shardMgr,
+		Redis:  rdb,
 	}
 
-	// 4. Setup Gin Router
 	router := gin.Default()
-	port := getEnv("PORT", "8081")
 
-	// Health check
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "user-service"})
-	})
-
-	// User Routes
+	// API Routes
 	api := router.Group("/api/v1/users")
 	{
-		api.GET("", app.getAllUsers)
-		api.GET("/:id", app.getUserByID)
 		api.POST("", app.createUser)
+		api.GET("/:id", app.getUserByID)
 		api.PUT("/:id", app.updateUser)
 		api.DELETE("/:id", app.deleteUser)
+		api.GET("", app.getAllUsers)
 	}
 
-	logger.Info("User Service démarré sur le port %s", port)
-
-	if err := router.Run(":" + port); err != nil {
-		logger.Fatal("Erreur démarrage serveur: %v", err)
-	}
+	port := getEnv("PORT", "8081")
+	logger.Info("User Service started on port %s", port)
+	router.Run(":" + port)
 }
 
 // --- HANDLERS ---
-
-func (app *App) getAllUsers(c *gin.Context) {
-	rows, err := app.DB.Pool.Query(c.Request.Context(), "SELECT id, username, email, status FROM users")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de la récupération"})
-		return
-	}
-	defer rows.Close()
-
-	var userList []User
-	for rows.Next() {
-		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.Status); err == nil {
-			userList = append(userList, u)
-		}
-	}
-
-	c.JSON(http.StatusOK, gin.H{"users": userList, "count": len(userList)})
-}
-
-func (app *App) getUserByID(c *gin.Context) {
-	id := c.Param("id")
-	var user User
-
-	// 1. Try Cache First (Redis)
-	err := app.Redis.GetSession(c.Request.Context(), id, &user)
-	if err == nil {
-		logger.Info("Cache Hit: User %s retrieved from Redis", id)
-		c.JSON(http.StatusOK, user)
-		return
-	}
-
-	// 2. Database Fallback (pgxpool)
-	query := "SELECT id, username, email, status FROM users WHERE id = $1"
-	err = app.DB.Pool.QueryRow(c.Request.Context(), query, id).Scan(&user.ID, &user.Username, &user.Email, &user.Status)
-
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Utilisateur non trouvé"})
-		return
-	}
-
-	// 3. Set Cache for future requests (Expires in 10m)
-	_ = app.Redis.SetSession(c.Request.Context(), id, user, 10*time.Minute)
-
-	c.JSON(http.StatusOK, user)
-}
 
 func (app *App) createUser(c *gin.Context) {
 	var user User
@@ -304,60 +251,80 @@ func (app *App) createUser(c *gin.Context) {
 	user.ID = uuid.New().String()
 	user.Status = "active"
 
-	query := "INSERT INTO users (id, username, email, status) VALUES ($1, $2, $3, $4)"
-	_, err := app.DB.Pool.Exec(c.Request.Context(), query, user.ID, user.Username, user.Email, user.Status)
+	shard := app.Shards.GetShard(user.ID)
+	_, err := shard.Exec(c.Request.Context(), 
+		"INSERT INTO users (id, username, email, status) VALUES ($1, $2, $3, $4)", 
+		user.ID, user.Username, user.Email, user.Status)
+	
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur insertion DB"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "DB error"})
 		return
 	}
 
-	// Pre-warm the cache
-	_ = app.Redis.SetSession(c.Request.Context(), user.ID, user, 10*time.Minute)
-
+	_ = app.Redis.SetSession(c.Request.Context(), user.ID, user, 15*time.Minute)
 	c.JSON(http.StatusCreated, user)
+}
+
+func (app *App) getUserByID(c *gin.Context) {
+	id := c.Param("id")
+	var user User
+
+	if err := app.Redis.GetSession(c.Request.Context(), id, &user); err == nil {
+		c.JSON(http.StatusOK, user)
+		return
+	}
+
+	shard := app.Shards.GetShard(id)
+	err := shard.QueryRow(c.Request.Context(), 
+		"SELECT id, username, email, status FROM users WHERE id = $1", id).
+		Scan(&user.ID, &user.Username, &user.Email, &user.Status)
+
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	_ = app.Redis.SetSession(c.Request.Context(), id, user, 15*time.Minute)
+	c.JSON(http.StatusOK, user)
+}
+
+func (app *App) getAllUsers(c *gin.Context) {
+	var allUsers []User
+	// Basic loop: queries each shard one by one
+	for _, pool := range app.Shards.Shards {
+		rows, _ := pool.Query(c.Request.Context(), "SELECT id, username, email, status FROM users")
+		for rows.Next() {
+			var u User
+			rows.Scan(&u.ID, &u.Username, &u.Email, &u.Status)
+			allUsers = append(allUsers, u)
+		}
+		rows.Close()
+	}
+	c.JSON(http.StatusOK, allUsers)
 }
 
 func (app *App) updateUser(c *gin.Context) {
 	id := c.Param("id")
 	var input User
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	c.ShouldBindJSON(&input)
 
-	query := "UPDATE users SET username=$1, email=$2, status=$3 WHERE id=$4"
-	_, err := app.DB.Pool.Exec(c.Request.Context(), query, input.Username, input.Email, input.Status, id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur mise à jour DB"})
-		return
-	}
-
-	// Invalidate Cache after update to prevent stale data
+	shard := app.Shards.GetShard(id)
+	shard.Exec(c.Request.Context(), "UPDATE users SET username=$1 WHERE id=$2", input.Username, id)
+	
 	app.Redis.Client.Del(c.Request.Context(), "session:"+id)
-
-	c.JSON(http.StatusOK, gin.H{"message": "Utilisateur mis à jour"})
+	c.JSON(http.StatusOK, gin.H{"message": "updated"})
 }
 
 func (app *App) deleteUser(c *gin.Context) {
 	id := c.Param("id")
-
-	_, err := app.DB.Pool.Exec(c.Request.Context(), "DELETE FROM users WHERE id=$1", id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur suppression DB"})
-		return
-	}
-
-	// Remove from Cache
+	shard := app.Shards.GetShard(id)
+	shard.Exec(c.Request.Context(), "DELETE FROM users WHERE id=$1", id)
+	
 	app.Redis.Client.Del(c.Request.Context(), "session:"+id)
-
-	c.JSON(http.StatusOK, gin.H{"message": "Utilisateur supprimé"})
+	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }
 
-// --- HELPERS ---
-
 func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
+	if v := os.Getenv(key); v != "" { return v }
 	return defaultValue
 }

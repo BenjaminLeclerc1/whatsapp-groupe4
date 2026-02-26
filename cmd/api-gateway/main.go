@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"errors"
 	"net/http"
 	"os"
