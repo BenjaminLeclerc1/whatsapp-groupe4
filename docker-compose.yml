@@ -5,6 +5,8 @@ services:
   postgres_shard_0:
     image: postgres:16-alpine
     container_name: whatsapp-shard-0
+    ports:
+      - "5433:5432"
     environment:
       POSTGRES_USER: whatsapp
       POSTGRES_PASSWORD: whatsapp_secret
