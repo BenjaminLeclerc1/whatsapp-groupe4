@@ -1,180 +1,6 @@
-// package main
-
-// import (
-// 	"net/http"
-// 	"os"
-// 	"sync"
-
-// 	"github.com/gin-gonic/gin"
-// 	"github.com/google/uuid"
-// 	"github.com/whatsapp-groupe4/internal/logger"
-// )
-
-// type User struct {
-// 	ID       string `json:"id"`
-// 	Username string `json:"username"`
-// 	Email    string `json:"email"`
-// 	Status   string `json:"status"`
-// }
-
-// var (
-// 	users = make(map[string]User)
-// 	mu    sync.RWMutex
-// )
-
-// func main() {
-// 	logger.Init("user-service")
-// 	defer logger.Close()
-
-// 	router := gin.Default()
-
-// 	port := getEnv("PORT", "8081")
-
-// 	// Health check
-// 	router.GET("/health", func(c *gin.Context) {
-// 		c.JSON(http.StatusOK, gin.H{
-// 			"status":  "healthy",
-// 			"service": "user-service",
-// 		})
-// 	})
-
-// 	// Routes utilisateurs
-// 	api := router.Group("/api/v1/users")
-// 	{
-// 		api.GET("", getAllUsers)
-// 		api.GET("/:id", getUserByID)
-// 		api.POST("", createUser)
-// 		api.PUT("/:id", updateUser)
-// 		api.DELETE("/:id", deleteUser)
-// 	}
-
-// 	logger.Info("User Service démarré sur le port %s", port)
-
-// 	if err := router.Run(":" + port); err != nil {
-// 		logger.Fatal("Erreur démarrage serveur: %v", err)
-// 	}
-// }
-
-// func getEnv(key, defaultValue string) string {
-// 	if value := os.Getenv(key); value != "" {
-// 		return value
-// 	}
-// 	return defaultValue
-// }
-
-// func getAllUsers(c *gin.Context) {
-// 	mu.RLock()
-// 	defer mu.RUnlock()
-
-// 	userList := make([]User, 0, len(users))
-// 	for _, user := range users {
-// 		userList = append(userList, user)
-// 	}
-
-// 	c.JSON(http.StatusOK, gin.H{
-// 		"users": userList,
-// 		"count": len(userList),
-// 	})
-// }
-
-// func getUserByID(c *gin.Context) {
-// 	id := c.Param("id")
-
-// 	mu.RLock()
-// 	user, exists := users[id]
-// 	mu.RUnlock()
-
-// 	if !exists {
-// 		c.JSON(http.StatusNotFound, gin.H{"error": "Utilisateur non trouvé"})
-// 		return
-// 	}
-
-// 	c.JSON(http.StatusOK, user)
-// }
-
-// func createUser(c *gin.Context) {
-// 	var input struct {
-// 		Username string `json:"username" binding:"required"`
-// 		Email    string `json:"email" binding:"required"`
-// 	}
-
-// 	if err := c.ShouldBindJSON(&input); err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-// 		return
-// 	}
-
-// 	user := User{
-// 		ID:       uuid.New().String(),
-// 		Username: input.Username,
-// 		Email:    input.Email,
-// 		Status:   "active",
-// 	}
-
-// 	mu.Lock()
-// 	users[user.ID] = user
-// 	mu.Unlock()
-
-// 	c.JSON(http.StatusCreated, user)
-// }
-
-// func updateUser(c *gin.Context) {
-// 	id := c.Param("id")
-
-// 	mu.Lock()
-// 	defer mu.Unlock()
-
-// 	user, exists := users[id]
-// 	if !exists {
-// 		c.JSON(http.StatusNotFound, gin.H{"error": "Utilisateur non trouvé"})
-// 		return
-// 	}
-
-// 	var input struct {
-// 		Username string `json:"username"`
-// 		Email    string `json:"email"`
-// 		Status   string `json:"status"`
-// 	}
-
-// 	if err := c.ShouldBindJSON(&input); err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-// 		return
-// 	}
-
-// 	if input.Username != "" {
-// 		user.Username = input.Username
-// 	}
-// 	if input.Email != "" {
-// 		user.Email = input.Email
-// 	}
-// 	if input.Status != "" {
-// 		user.Status = input.Status
-// 	}
-
-// 	users[id] = user
-// 	c.JSON(http.StatusOK, user)
-// }
-
-// func deleteUser(c *gin.Context) {
-// 	id := c.Param("id")
-
-// 	mu.Lock()
-// 	defer mu.Unlock()
-
-// 	if _, exists := users[id]; !exists {
-// 		c.JSON(http.StatusNotFound, gin.H{"error": "Utilisateur non trouvé"})
-// 		return
-// 	}
-
-// 	delete(users, id)
-// 	c.JSON(http.StatusOK, gin.H{"message": "Utilisateur supprimé"})
-// }
-
-
-
 package main
 
 import (
-	// "context"
 	"net/http"
 	"os"
 	"strings"
@@ -185,6 +11,9 @@ import (
 	"github.com/whatsapp-groupe4/internal/cache"
 	"github.com/whatsapp-groupe4/internal/logger"
 	"github.com/whatsapp-groupe4/internal/sharding"
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
 type User struct {
@@ -199,22 +28,43 @@ type App struct {
 	Redis  *cache.RedisClient
 }
 
+// runMigrations is now correctly placed outside of main
+func runMigrations(shardURLs []string) {
+	for _, url := range shardURLs {
+		// golang-migrate needs the 'postgres://' prefix
+		m, err := migrate.New("file://migrations", url)
+		if err != nil {
+			logger.Fatal("Could not init migration for %s: %v", url, err)
+		}
+
+		if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+			logger.Fatal("Could not run migration for %s: %v", url, err)
+		}
+		logger.Info("Migrations successful for shard: %s", url)
+	}
+}
+
 func main() {
 	logger.Init("user-service")
 	defer logger.Close()
 
-	// 1. Initialize Shards
-	shardURLs := strings.Split(os.Getenv("SHARD_URLS"), ",")
-	if len(shardURLs) == 0 || shardURLs[0] == "" {
+	// 1. Get Shard URLs
+	shardURLsEnv := os.Getenv("SHARD_URLS")
+	if shardURLsEnv == "" {
 		logger.Fatal("SHARD_URLS env variable is required")
 	}
+	shardURLs := strings.Split(shardURLsEnv, ",")
 
+	// 2. Run Migrations on all shards BEFORE starting service
+	runMigrations(shardURLs)
+
+	// 3. Initialize Shard Manager
 	shardMgr, err := sharding.NewShardManager(shardURLs)
 	if err != nil {
 		logger.Fatal("Failed to init shards: %v", err)
 	}
 
-	// 2. Initialize Redis
+	// 4. Initialize Redis
 	rdb := cache.NewRedisClient(getEnv("REDIS_ADDR", "redis:6379"))
 
 	app := &App{
@@ -224,7 +74,7 @@ func main() {
 
 	router := gin.Default()
 
-	// API Routes
+	// 5. API Routes
 	api := router.Group("/api/v1/users")
 	{
 		api.POST("", app.createUser)
@@ -252,10 +102,10 @@ func (app *App) createUser(c *gin.Context) {
 	user.Status = "active"
 
 	shard := app.Shards.GetShard(user.ID)
-	_, err := shard.Exec(c.Request.Context(), 
-		"INSERT INTO users (id, username, email, status) VALUES ($1, $2, $3, $4)", 
+	_, err := shard.Exec(c.Request.Context(),
+		"INSERT INTO users (id, username, email, status) VALUES ($1, $2, $3, $4)",
 		user.ID, user.Username, user.Email, user.Status)
-	
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "DB error"})
 		return
@@ -275,7 +125,7 @@ func (app *App) getUserByID(c *gin.Context) {
 	}
 
 	shard := app.Shards.GetShard(id)
-	err := shard.QueryRow(c.Request.Context(), 
+	err := shard.QueryRow(c.Request.Context(),
 		"SELECT id, username, email, status FROM users WHERE id = $1", id).
 		Scan(&user.ID, &user.Username, &user.Email, &user.Status)
 
@@ -290,9 +140,11 @@ func (app *App) getUserByID(c *gin.Context) {
 
 func (app *App) getAllUsers(c *gin.Context) {
 	var allUsers []User
-	// Basic loop: queries each shard one by one
 	for _, pool := range app.Shards.Shards {
-		rows, _ := pool.Query(c.Request.Context(), "SELECT id, username, email, status FROM users")
+		rows, err := pool.Query(c.Request.Context(), "SELECT id, username, email, status FROM users")
+		if err != nil {
+			continue
+		}
 		for rows.Next() {
 			var u User
 			rows.Scan(&u.ID, &u.Username, &u.Email, &u.Status)
@@ -310,7 +162,7 @@ func (app *App) updateUser(c *gin.Context) {
 
 	shard := app.Shards.GetShard(id)
 	shard.Exec(c.Request.Context(), "UPDATE users SET username=$1 WHERE id=$2", input.Username, id)
-	
+
 	app.Redis.Client.Del(c.Request.Context(), "session:"+id)
 	c.JSON(http.StatusOK, gin.H{"message": "updated"})
 }
@@ -319,12 +171,14 @@ func (app *App) deleteUser(c *gin.Context) {
 	id := c.Param("id")
 	shard := app.Shards.GetShard(id)
 	shard.Exec(c.Request.Context(), "DELETE FROM users WHERE id=$1", id)
-	
+
 	app.Redis.Client.Del(c.Request.Context(), "session:"+id)
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }
 
 func getEnv(key, defaultValue string) string {
-	if v := os.Getenv(key); v != "" { return v }
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
 	return defaultValue
 }
