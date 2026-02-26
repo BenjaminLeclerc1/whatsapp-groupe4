@@ -32,3 +32,13 @@ docker compose up
  docker compose ps
 
  docker compose logs -f api-gateway
+
+ docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+ docker logs -f whatsapp-groupe4-user-service-1
+
+ # Rebuild
+ docker compose up --build -d
+
+ docker compose up --build -d user-service
+ docker compose up --build -d user-service
