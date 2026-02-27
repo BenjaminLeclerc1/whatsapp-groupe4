@@ -130,8 +130,14 @@ services:
       - "${NOTIFICATION_SERVICE_PORT:-8083}:8083"
     environment:
       - PORT=8083
+      - REDIS_ADDR=whatsapp-redis:6379 # Add this!
+    depends_on:
+      redis:
+        condition: service_healthy # Add this!
     networks:
       - whatsapp-network
+
+
 
   channel-service:
     build:
