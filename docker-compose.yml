@@ -142,8 +142,14 @@ services:
     environment:
       - PORT=8085
       - DATABASE_URL=postgres://whatsapp:whatsapp_secret@whatsapp-shard-0:5432/whatsapp_shard_0?sslmode=disable
+      - JWT_SECRET=${JWT_SECRET:-whatsapp-groupe4-secret-change-in-prod}
+    depends_on:
+      postgres_shard_0:
+        condition: service_healthy
     networks:
       - whatsapp-network
+
+
 
 networks:
   whatsapp-network:

@@ -28,22 +28,37 @@ func NewRepository(pool *pgxpool.Pool) Repository {
 
 // CreateMessage uses a CTE to verify membership and insert in a single round-trip.
 // Returns pgx.ErrNoRows when the user is not a member of the chat.
-func (r *pgRepository) CreateMessage(ctx context.Context, chatID, senderID, content string) (Message, error) {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
+// internal/messages/repository.go
 
-	var m Message
-	err := r.pool.QueryRow(ctx,
-		`WITH member_check AS (
-			SELECT 1 FROM chat_participants WHERE chat_id = $1 AND user_id = $2
-		)
-		INSERT INTO messages (sender_id, chat_id, content)
-		SELECT $2, $1, $3
-		WHERE EXISTS (SELECT 1 FROM member_check)
-		RETURNING id, sender_id::text, chat_id, content, status, created_at`,
-		chatID, senderID, content,
-	).Scan(&m.ID, &m.SenderID, &m.ChatID, &m.Content, &m.Status, &m.CreatedAt)
-	return m, err
+// internal/messages/repository.go
+
+func (r *pgRepository) CreateMessage(ctx context.Context, chatID, senderID, content string) (Message, error) {
+    // 1. Check if the chat actually exists first
+    var chatExists bool
+    err := r.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM chats WHERE id = $1::uuid)", chatID).Scan(&chatExists)
+    if !chatExists {
+        return Message{}, fmt.Errorf("chat_not_found: %s", chatID)
+    }
+
+    // 2. Check if the user is a member
+    var isMember bool
+    err = r.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM chat_participants WHERE chat_id = $1::uuid AND user_id = $2::uuid)", chatID, senderID).Scan(&isMember)
+    if !isMember {
+        return Message{}, fmt.Errorf("user_not_participant: %s", senderID)
+    }
+
+    // 3. Now perform the insert
+    var m Message
+    query := `
+        INSERT INTO messages (sender_id, chat_id, content, status)
+        VALUES ($1::uuid, $2::uuid, $3, 'sent')
+        RETURNING id::text, sender_id::text, chat_id::text, content, status, created_at`
+
+    err = r.pool.QueryRow(ctx, query, senderID, chatID, content).Scan(
+        &m.ID, &m.SenderID, &m.ChatID, &m.Content, &m.Status, &m.CreatedAt,
+    )
+
+    return m, err
 }
 
 func (r *pgRepository) GetMessageByID(ctx context.Context, id string) (Message, error) {

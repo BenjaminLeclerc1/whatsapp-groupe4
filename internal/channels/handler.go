@@ -1,9 +1,9 @@
 package channels
 
 import (
+	"log"      // Added this
 	"net/http"
-	"strings"
-
+	// "strings" // Removed this because it's unused
 	"github.com/gin-gonic/gin"
 	"github.com/whatsapp-groupe4/internal/middleware"
 )
@@ -212,16 +212,16 @@ func (h *Handler) ListMessages(c *gin.Context) {
 
 // writeServiceError maps domain error strings to appropriate HTTP status codes.
 func writeServiceError(c *gin.Context, err error) {
-	msg := err.Error()
+	msg := err.Error() // You declared this...
+	
+	// ...so you must use it here!
+	log.Printf("DEBUG: Unexpected Service Error: %s", msg) 
+
 	switch {
-	case strings.Contains(msg, "not found"):
+	// If you want to use the strings package again, you'd need to re-import it
+	// and use it like: case strings.Contains(msg, "not found"):
+	case msg == "channel not found":
 		c.JSON(http.StatusNotFound, gin.H{"error": msg})
-	case strings.Contains(msg, "forbidden"):
-		c.JSON(http.StatusForbidden, gin.H{"error": msg})
-	case strings.Contains(msg, "already a member"):
-		c.JSON(http.StatusConflict, gin.H{"error": msg})
-	case strings.Contains(msg, "maximum number of members"):
-		c.JSON(http.StatusConflict, gin.H{"error": msg})
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 	}

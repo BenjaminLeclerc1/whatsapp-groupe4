@@ -1,6 +1,7 @@
 package messages
 
 import (
+	// "log"
 	"net/http"
 	"strings"
 
@@ -26,27 +27,32 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	}
 }
 
+// internal/messages/handler.go
+
 func (h *Handler) SendMessage(c *gin.Context) {
-	userID := middleware.GetUserID(c)
+    // 1. We define "userID" here
+    userID := middleware.GetUserID(c)
 
-	var req SendMessageRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+    // 2. We define "req" here
+    var req SendMessageRequest 
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
 
-	if !middleware.IsValidUUID(req.ChatID) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chat_id format"})
-		return
-	}
+    if !middleware.IsValidUUID(req.ChatID) {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "invalid chat_id format"})
+        return
+    }
 
-	msg, err := h.svc.SendMessage(c.Request.Context(), userID, req)
-	if err != nil {
-		writeServiceError(c, err)
-		return
-	}
+    // 3. Now "userID" and "req" exist and can be passed to the service
+    msg, err := h.svc.SendMessage(c.Request.Context(), userID, req)
+    if err != nil {
+        writeServiceError(c, err)
+        return
+    }
 
-	c.JSON(http.StatusCreated, MessageResponse{Message: msg})
+    c.JSON(http.StatusCreated, MessageResponse{Message: msg})
 }
 
 func (h *Handler) GetMessage(c *gin.Context) {
