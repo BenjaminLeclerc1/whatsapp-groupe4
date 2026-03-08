@@ -4,11 +4,12 @@ API WhatsApp-like construite avec Go et une architecture microservices.
 
 ## Architecture
 
-Le projet est composé de 3 microservices :
+Le projet est composé de 4 microservices :
 
 - **API Gateway** (port 8080) : Point d'entrée principal, route les requêtes vers les services appropriés
 - **User Service** (port 8081) : Gestion des utilisateurs (CRUD)
 - **Message Service** (port 8082) : Gestion des messages
+- **Presence Service** (port 8083) : Gestion de la présence des utilisateurs (online/offline/typing)
 
 ## Prérequis
 
@@ -53,6 +54,7 @@ make run-message
 curl http://localhost:8080/health
 curl http://localhost:8081/health
 curl http://localhost:8082/health
+curl http://localhost:8083/health
 ```
 
 ### User Service
@@ -96,6 +98,45 @@ curl http://localhost:8082/api/v1/messages/chat/{chatId}
 curl -X DELETE http://localhost:8082/api/v1/messages/{id}
 ```
 
+### Presence Service
+
+```bash
+# Marquer un utilisateur comme en ligne
+curl -X POST http://localhost:8083/api/v1/presence/online \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "user-123"}'
+
+# Marquer un utilisateur comme hors ligne
+curl -X POST http://localhost:8083/api/v1/presence/offline \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "user-123"}'
+
+# Indiquer qu'un utilisateur est en train de taper
+curl -X POST http://localhost:8083/api/v1/presence/typing \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "user-123", "chat_id": "chat-456", "typing": true}'
+
+# Obtenir la présence d'un utilisateur
+curl http://localhost:8083/api/v1/presence/user-123
+
+# Obtenir la présence de plusieurs utilisateurs
+curl -X GET http://localhost:8083/api/v1/presence/bulk \
+  -H "Content-Type: application/json" \
+  -d '{"user_ids": ["user-123", "user-456", "user-789"]}'
+
+# Mettre à jour la présence (générique)
+curl -X POST http://localhost:8083/api/v1/presence/update \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "user-123", "status": "online"}'
+```
+
+**Fonctionnalités du Presence Service :**
+- 🟢 Statuts disponibles : `online`, `offline`, `typing`
+- ⏱️ Timeout automatique après 5 minutes d'inactivité (passage en offline)
+- ⌨️ Timeout du statut "typing" après 10 secondes
+- 📊 Récupération de la présence en masse (bulk)
+- 🔄 Worker background pour gérer les timeouts automatiquement
+
 ## Structure du projet
 
 ```
@@ -103,7 +144,8 @@ curl -X DELETE http://localhost:8082/api/v1/messages/{id}
 ├── cmd/
 │   ├── api-gateway/      # Service API Gateway
 │   ├── user-service/     # Service utilisateurs
-│   └── message-service/  # Service messages
+│   ├── message-service/  # Service messages
+│   └── presence-service/ # Service de présence
 ├── docker-compose.yml    # Orchestration Docker
 ├── go.mod               # Dépendances Go
 ├── Makefile             # Commandes utilitaires
@@ -118,6 +160,7 @@ curl -X DELETE http://localhost:8082/api/v1/messages/{id}
 | `make run-gateway` | Lance l'API Gateway |
 | `make run-user` | Lance le User Service |
 | `make run-message` | Lance le Message Service |
+| `make run-presence` | Lance le Presence Service |
 | `make docker-build` | Construit les images Docker |
 | `make docker-up` | Démarre les containers |
 | `make docker-down` | Arrête les containers |

@@ -10,9 +10,11 @@ services:
     environment:
       - USER_SERVICE_URL=http://user-service:8081
       - MESSAGE_SERVICE_URL=http://message-service:8082
+      - PRESENCE_SERVICE_URL=http://presence-service:8083
     depends_on:
       - user-service
       - message-service
+      - presence-service
     networks:
       - whatsapp-network
 
@@ -35,6 +37,17 @@ services:
       - "8082:8082"
     environment:
       - PORT=8082
+    networks:
+      - whatsapp-network
+
+  presence-service:
+    build:
+      context: .
+      dockerfile: ./cmd/presence-service/Dockerfile
+    ports:
+      - "8083:8083"
+    environment:
+      - PORT=8083
     networks:
       - whatsapp-network
 
