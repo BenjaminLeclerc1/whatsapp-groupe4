@@ -11,10 +11,12 @@ services:
       - USER_SERVICE_URL=http://user-service:8081
       - MESSAGE_SERVICE_URL=http://message-service:8082
       - PRESENCE_SERVICE_URL=http://presence-service:8083
+      - SEARCH_SERVICE_URL=http://search-service:8084
     depends_on:
       - user-service
       - message-service
       - presence-service
+      - search-service
     networks:
       - whatsapp-network
 
@@ -48,6 +50,17 @@ services:
       - "8083:8083"
     environment:
       - PORT=8083
+    networks:
+      - whatsapp-network
+
+  search-service:
+    build:
+      context: .
+      dockerfile: ./cmd/search-service/Dockerfile
+    ports:
+      - "8084:8084"
+    environment:
+      - PORT=8084
     networks:
       - whatsapp-network
 

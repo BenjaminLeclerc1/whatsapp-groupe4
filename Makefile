@@ -12,6 +12,7 @@ build:
 	$(GO) build -o bin/user-service ./cmd/user-service
 	$(GO) build -o bin/message-service ./cmd/message-service
 	$(GO) build -o bin/presence-service ./cmd/presence-service
+	$(GO) build -o bin/search-service ./cmd/search-service
 
 run-gateway:
 	$(GO) run ./cmd/api-gateway
@@ -24,6 +25,9 @@ run-message:
 
 run-presence:
 	$(GO) run ./cmd/presence-service
+
+run-search:
+	$(GO) run ./cmd/search-service
 
 test:
 	$(GO) test -v ./...
