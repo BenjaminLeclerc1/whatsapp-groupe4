@@ -1,58 +1,127 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
-	"sync"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-)
-
-type Message struct {
-	ID        string    `json:"id"`
-	SenderID  string    `json:"sender_id"`
-	Content   string    `json:"content"`
-	ChatID    string    `json:"chat_id"`
-	CreatedAt time.Time `json:"created_at"`
-	Status    string    `json:"status"`
-}
-
-var (
-	messages = make(map[string]Message)
-	mu       sync.RWMutex
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/whatsapp-groupe4/internal/logger"
+	"github.com/whatsapp-groupe4/internal/messages"
+	"github.com/whatsapp-groupe4/internal/middleware"
 )
 
 func main() {
-	router := gin.Default()
-
+	// 1. Initialize Logger and Config
+	logger.Init("message-service")
+	defer logger.Close()
 	port := getEnv("PORT", "8082")
 
-	// Health check
+	// 2. Initialize Database
+	pool, err := initDB()
+	if err != nil {
+		log.Fatalf("database connection failed: %v", err)
+	}
+	defer pool.Close()
+
+	// 3. Setup Router & Middleware
+	router := gin.Default()
+	
+	repo := messages.NewRepository(pool)
+	svc := messages.NewService(repo)
+	handler := messages.NewHandler(svc)
+
+	rateLimiter := middleware.NewRateLimiter(60, time.Minute)
+	defer rateLimiter.Stop()
+
+	// 4. Routes
 	router.GET("/health", func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+
+		dbStatus := "connected"
+		if err := pool.Ping(ctx); err != nil {
+			dbStatus = "disconnected"
+		}
 		c.JSON(http.StatusOK, gin.H{
-			"status":  "healthy",
-			"service": "message-service",
+			"status":   "healthy",
+			"service":  "message-service",
+			"database": dbStatus,
 		})
 	})
 
-	// Routes messages
-	api := router.Group("/api/v1/messages")
-	{
-		api.GET("", getAllMessages)
-		api.GET("/:id", getMessageByID)
-		api.GET("/chat/:chatId", getMessagesByChat)
-		api.POST("", createMessage)
-		api.DELETE("/:id", deleteMessage)
+	api := router.Group("/api/v1", middleware.ExtractUserID(), rateLimiter.Middleware())
+	handler.RegisterRoutes(api)
+
+	// 5. Graceful Shutdown Setup
+	srv := &http.Server{
+		Addr:           ":" + port,
+		Handler:        router,
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   15 * time.Second,
+		IdleTimeout:    120 * time.Second,
+		MaxHeaderBytes: 1 << 16,
 	}
 
-	log.Printf("Message Service démarré sur le port %s", port)
+	// Channel to listen for interrupt signals
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	if err := router.Run(":" + port); err != nil {
-		log.Fatalf("Erreur démarrage serveur: %v", err)
+	go func() {
+		logger.Info("Message Service started on port %s", port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Fatal("Server error: %v", err)
+		}
+	}()
+
+	// Wait for signal
+	<-ctx.Done()
+	log.Println("Shutting down gracefully...")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Fatalf("Forced shutdown: %v", err)
 	}
+
+	log.Println("Message Service stopped")
+}
+
+func initDB() (*pgxpool.Pool, error) {
+	databaseURL := getEnv("DATABASE_URL", "postgres://whatsapp:whatsapp_secret@localhost:5432/whatsapp_db?sslmode=disable")
+
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, err
+	}
+
+	config.MaxConns = 50
+	config.MinConns = 10
+	config.MaxConnLifetime = time.Hour
+	config.MaxConnIdleTime = 30 * time.Minute
+	config.HealthCheckPeriod = 30 * time.Second
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, err
+	}
+
+	log.Printf("PostgreSQL connected (pool: min=%d max=%d)", config.MinConns, config.MaxConns)
+	return pool, nil
 }
 
 func getEnv(key, defaultValue string) string {
@@ -60,97 +129,4 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
-}
-
-func getAllMessages(c *gin.Context) {
-	mu.RLock()
-	defer mu.RUnlock()
-
-	messageList := make([]Message, 0, len(messages))
-	for _, msg := range messages {
-		messageList = append(messageList, msg)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"messages": messageList,
-		"count":    len(messageList),
-	})
-}
-
-func getMessageByID(c *gin.Context) {
-	id := c.Param("id")
-
-	mu.RLock()
-	msg, exists := messages[id]
-	mu.RUnlock()
-
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Message non trouvé"})
-		return
-	}
-
-	c.JSON(http.StatusOK, msg)
-}
-
-func getMessagesByChat(c *gin.Context) {
-	chatID := c.Param("chatId")
-
-	mu.RLock()
-	defer mu.RUnlock()
-
-	chatMessages := make([]Message, 0)
-	for _, msg := range messages {
-		if msg.ChatID == chatID {
-			chatMessages = append(chatMessages, msg)
-		}
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"messages": chatMessages,
-		"chat_id":  chatID,
-		"count":    len(chatMessages),
-	})
-}
-
-func createMessage(c *gin.Context) {
-	var input struct {
-		SenderID string `json:"sender_id" binding:"required"`
-		Content  string `json:"content" binding:"required"`
-		ChatID   string `json:"chat_id" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	msg := Message{
-		ID:        uuid.New().String(),
-		SenderID:  input.SenderID,
-		Content:   input.Content,
-		ChatID:    input.ChatID,
-		CreatedAt: time.Now(),
-		Status:    "sent",
-	}
-
-	mu.Lock()
-	messages[msg.ID] = msg
-	mu.Unlock()
-
-	c.JSON(http.StatusCreated, msg)
-}
-
-func deleteMessage(c *gin.Context) {
-	id := c.Param("id")
-
-	mu.Lock()
-	defer mu.Unlock()
-
-	if _, exists := messages[id]; !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Message non trouvé"})
-		return
-	}
-
-	delete(messages, id)
-	c.JSON(http.StatusOK, gin.H{"message": "Message supprimé"})
 }

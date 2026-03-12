@@ -2,19 +2,35 @@ package main
 
 import (
 	"log"
+	"errors"
 	"net/http"
 	"os"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/whatsapp-groupe4/internal/logger"
 )
 
+type Claims struct {
+	UserID string `json:"user_id"`
+	Email  string `json:"email"`
+	jwt.RegisteredClaims
+}
+
 func main() {
+	logger.Init("api-gateway")
+	defer logger.Close()
+
 	router := gin.Default()
 
 	userServiceURL := getEnv("USER_SERVICE_URL", "http://localhost:8081")
 	messageServiceURL := getEnv("MESSAGE_SERVICE_URL", "http://localhost:8082")
 	presenceServiceURL := getEnv("PRESENCE_SERVICE_URL", "http://localhost:8083")
 	searchServiceURL := getEnv("SEARCH_SERVICE_URL", "http://localhost:8084")
+	notificationServiceURL := getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8085")
+	authServiceURL := getEnv("AUTH_SERVICE_URL", "http://localhost:8086")
+	channelServiceURL := getEnv("CHANNEL_SERVICE_URL", "http://localhost:8087")
+	jwtSecret := getEnv("JWT_SECRET", "whatsapp-groupe4-secret-change-in-prod")
 
 	// Routes API Gateway
 	router.GET("/health", func(c *gin.Context) {
@@ -31,15 +47,31 @@ func main() {
 		api.Any("/messages/*path", proxyHandler(messageServiceURL))
 		api.Any("/presence/*path", proxyHandler(presenceServiceURL))
 		api.Any("/search/*path", proxyHandler(searchServiceURL))
+		// Routes publiques d'authentification (pas de JWT requis ici)
+		api.Any("/auth/*path", proxyHandler(authServiceURL))
+
+		// Toutes les autres routes /api/v1/** nécessitent un JWT valide
+		protected := api.Group("/", authMiddleware(jwtSecret))
+		{
+			protected.Any("/users/*path", proxyHandler(userServiceURL))
+			protected.Any("/messages/*path", proxyHandler(messageServiceURL))
+			protected.Any("/notification/*path", proxyHandler(notificationServiceURL))
+			protected.Any("/channels/*path", proxyHandler(channelServiceURL))
+		}
 	}
 
-	log.Println("API Gateway démarré sur le port 8080")
+	port := getEnv("API_GATEWAY_PORT", "8080")
+
+	log.Printf("API Gateway démarré sur le port %s", port)
 	log.Printf("User Service URL: %s", userServiceURL)
 	log.Printf("Message Service URL: %s", messageServiceURL)
 	log.Printf("Presence Service URL: %s", presenceServiceURL)
 	log.Printf("Search Service URL: %s", searchServiceURL)
+	log.Printf("Notification Service URL: %s", notificationServiceURL)
+	log.Printf("Auth Service URL: %s", authServiceURL)
+	log.Printf("Channel Service URL: %s", channelServiceURL)
 
-	if err := router.Run(":8080"); err != nil {
+	if err := router.Run(":" + port); err != nil {
 		log.Fatalf("Erreur démarrage serveur: %v", err)
 	}
 }
@@ -51,6 +83,14 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
+func requireEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("Variable d'environnement requise non définie : %s", key)
+	}
+	return value
+}
+
 func proxyHandler(targetURL string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Param("path")
@@ -59,5 +99,42 @@ func proxyHandler(targetURL string) gin.HandlerFunc {
 			"target_url": targetURL,
 			"path":       path,
 		})
+	}
+}
+
+func authMiddleware(jwtSecret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token manquant ou invalide"})
+			c.Abort()
+			return
+		}
+
+		tokenStr := authHeader[7:]
+		token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(t *jwt.Token) (interface{}, error) {
+			if t.Method != jwt.SigningMethodHS256 {
+				return nil, errors.New("unexpected signing method")
+			}
+			return []byte(jwtSecret), nil
+		})
+		if err != nil || !token.Valid {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token invalide ou expiré"})
+			c.Abort()
+			return
+		}
+
+		claims, ok := token.Claims.(*Claims)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token invalide"})
+			c.Abort()
+			return
+		}
+
+		// On propage l'identité dans le contexte et (plus tard) dans les headers si on met un vrai proxy HTTP.
+		c.Set("user_id", claims.UserID)
+		c.Set("email", claims.Email)
+
+		c.Next()
 	}
 }
