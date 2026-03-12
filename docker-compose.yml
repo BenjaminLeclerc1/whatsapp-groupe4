@@ -63,9 +63,16 @@ services:
     environment:
       - USER_SERVICE_URL=http://user-service:8081
       - MESSAGE_SERVICE_URL=http://message-service:8082
-      - NOTIFICATION_SERVICE_URL=http://notification-service:8083
-      - AUTH_SERVICE_URL=http://auth-service:8084
-      - CHANNEL_SERVICE_URL=http://channel-service:8085
+      - PRESENCE_SERVICE_URL=http://presence-service:8083
+      - SEARCH_SERVICE_URL=http://search-service:8084
+    depends_on:
+      - user-service
+      - message-service
+      - presence-service
+      - search-service
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8085
+      - AUTH_SERVICE_URL=http://auth-service:8086
+      - CHANNEL_SERVICE_URL=http://channel-service:8087
       - JWT_SECRET=${JWT_SECRET:-whatsapp-groupe4-secret-change-in-prod}
     depends_on:
       - user-service
@@ -142,6 +149,28 @@ services:
     environment:
       - PORT=8085
       - DATABASE_URL=postgres://whatsapp:whatsapp_secret@whatsapp-shard-0:5432/whatsapp_shard_0?sslmode=disable
+    networks:
+      - whatsapp-network
+
+  presence-service:
+    build:
+      context: .
+      dockerfile: ./cmd/presence-service/Dockerfile
+    ports:
+      - "8083:8083"
+    environment:
+      - PORT=8083
+    networks:
+      - whatsapp-network
+
+  search-service:
+    build:
+      context: .
+      dockerfile: ./cmd/search-service/Dockerfile
+    ports:
+      - "8084:8084"
+    environment:
+      - PORT=8084
     networks:
       - whatsapp-network
 

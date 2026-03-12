@@ -25,9 +25,11 @@ func main() {
 
 	userServiceURL := getEnv("USER_SERVICE_URL", "http://localhost:8081")
 	messageServiceURL := getEnv("MESSAGE_SERVICE_URL", "http://localhost:8082")
-	notificationServiceURL := getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8083")
-	authServiceURL := getEnv("AUTH_SERVICE_URL", "http://localhost:8084")
-	channelServiceURL := getEnv("CHANNEL_SERVICE_URL", "http://localhost:8085")
+	presenceServiceURL := getEnv("PRESENCE_SERVICE_URL", "http://localhost:8083")
+	searchServiceURL := getEnv("SEARCH_SERVICE_URL", "http://localhost:8084")
+	notificationServiceURL := getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8085")
+	authServiceURL := getEnv("AUTH_SERVICE_URL", "http://localhost:8086")
+	channelServiceURL := getEnv("CHANNEL_SERVICE_URL", "http://localhost:8087")
 	jwtSecret := getEnv("JWT_SECRET", "whatsapp-groupe4-secret-change-in-prod")
 
 	// Routes API Gateway
@@ -41,6 +43,10 @@ func main() {
 	// Proxy vers les microservices
 	api := router.Group("/api/v1")
 	{
+		api.Any("/users/*path", proxyHandler(userServiceURL))
+		api.Any("/messages/*path", proxyHandler(messageServiceURL))
+		api.Any("/presence/*path", proxyHandler(presenceServiceURL))
+		api.Any("/search/*path", proxyHandler(searchServiceURL))
 		// Routes publiques d'authentification (pas de JWT requis ici)
 		api.Any("/auth/*path", proxyHandler(authServiceURL))
 
@@ -59,6 +65,8 @@ func main() {
 	log.Printf("API Gateway démarré sur le port %s", port)
 	log.Printf("User Service URL: %s", userServiceURL)
 	log.Printf("Message Service URL: %s", messageServiceURL)
+	log.Printf("Presence Service URL: %s", presenceServiceURL)
+	log.Printf("Search Service URL: %s", searchServiceURL)
 	log.Printf("Notification Service URL: %s", notificationServiceURL)
 	log.Printf("Auth Service URL: %s", authServiceURL)
 	log.Printf("Channel Service URL: %s", channelServiceURL)
