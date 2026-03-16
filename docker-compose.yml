@@ -22,6 +22,8 @@ services:
       retries: 5
 
   postgres_shard_1:
+    ports:
+      - "5434:5432"
     image: postgres:16-alpine
     container_name: whatsapp-shard-1
     environment:
@@ -55,30 +57,21 @@ services:
 
   # --- MICROSERVICES ---
   api-gateway:
-    build:
-      context: .
-      dockerfile: ./cmd/api-gateway/Dockerfile
-    ports:
-      - "${API_GATEWAY_PORT:-8080}:8080"
+    # ... build config ...
     environment:
       - USER_SERVICE_URL=http://user-service:8081
       - MESSAGE_SERVICE_URL=http://message-service:8082
       - PRESENCE_SERVICE_URL=http://presence-service:8083
       - SEARCH_SERVICE_URL=http://search-service:8084
-    depends_on:
-      - user-service
-      - message-service
-      - presence-service
-      - search-service
       - NOTIFICATION_SERVICE_URL=http://notification-service:8085
       - AUTH_SERVICE_URL=http://auth-service:8086
       - CHANNEL_SERVICE_URL=http://channel-service:8087
       - JWT_SECRET=${JWT_SECRET:-whatsapp-groupe4-secret-change-in-prod}
     depends_on:
       - user-service
+      - message-service
       - auth-service
-    networks:
-      - whatsapp-network
+
 
   user-service:
     build:

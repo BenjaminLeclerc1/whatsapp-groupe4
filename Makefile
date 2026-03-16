@@ -72,3 +72,11 @@ fmt:
 # Linter
 lint:
 	golangci-lint run ./...
+
+
+# Redis
+redis:
+	docker run --name whatsapp-redis -p 6379:6379 -d redis:7-alpine
+
+redis-stop:
+	docker stop whatsapp-redis && docker rm whatsapp-redis
