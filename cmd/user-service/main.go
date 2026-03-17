@@ -2,6 +2,7 @@ package main
 
 import (
 	// "context"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -37,19 +38,9 @@ type App struct {
 	Redis  *cache.RedisClient
 }
 
-func runMigrations(shardURLs []string) {
-	for _, url := range shardURLs {
-		m, err := migrate.New("file://migrations", url)
-		if err != nil {
-			logger.Fatal("Could not init migration for %s: %v", url, err)
-		}
 
-		if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-			logger.Fatal("Could not run migration for %s: %v", url, err)
-		}
-		logger.Info("Migrations successful for shard: %s", url)
-	}
-}
+
+
 
 func main() {
 	logger.Init("user-service")
@@ -82,6 +73,7 @@ func main() {
 	{
 		api.POST("/register", app.register)
 		api.POST("/login", app.login)
+		api.POST("/logout", app.logout)
 		api.GET("/:id", app.getUserByID)
 		api.PUT("/:id", app.updateUser)
 		api.DELETE("/:id", app.deleteUser)
@@ -93,6 +85,31 @@ func main() {
 	router.Run(":" + port)
 }
 
+
+func runMigrations(shardURLs []string) {
+    for _, url := range shardURLs {
+        // We append a custom migration table name so this service 
+        // doesn't conflict with others sharing the same shard.
+        targetURL := url
+        if strings.Contains(url, "?") {
+            targetURL += "&x-migrations-table=migrations_users"
+        } else {
+            targetURL += "?x-migrations-table=migrations_users"
+        }
+
+        m, err := migrate.New("file://migrations/user-service", targetURL) 
+        if err != nil {
+            fmt.Printf("❌ Erreur init migration pour %s: %v\n", url, err)
+            os.Exit(1)
+        }
+
+        if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+            fmt.Printf("❌ Erreur exécution migration pour %s: %v\n", url, err)
+            os.Exit(1)
+        }
+        fmt.Printf("✅ Migration réussie pour : %s\n", url)
+    }
+}
 // --- AUTH HANDLERS ---
 
 func (app *App) register(c *gin.Context) {
@@ -111,6 +128,7 @@ func (app *App) register(c *gin.Context) {
 
 	// 2. Setup Metadata
 	user.ID = uuid.New().String()
+	user.CreatedAt = time.Now()
 	user.Status = "active"
 	user.Role = "user"
 
@@ -181,6 +199,11 @@ func (app *App) login(c *gin.Context) {
 	})
 }
 
+// Assure-toi que le nom correspond exactement (L minuscule si c'est interne)
+func (app *App) logout(c *gin.Context) {
+    // Ton code de déconnexion ici
+    c.JSON(200, gin.H{"message": "Déconnecté avec succès"})
+}
 // --- USER MANAGEMENT HANDLERS ---
 
 func (app *App) getUserByID(c *gin.Context) {
@@ -223,26 +246,45 @@ func (app *App) getAllUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, allUsers)
 }
 
+
+
+
 func (app *App) updateUser(c *gin.Context) {
-	id := c.Param("id")
-	var input User
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid data"})
-		return
-	}
+    id := c.Param("id")
+    var input User
+    if err := c.ShouldBindJSON(&input); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Données invalides", "details": err.Error()})
+        return
+    }
 
-	shard := app.Shards.GetShard(id)
-	_, err := shard.Exec(c.Request.Context(), "UPDATE users SET username=$1, telephone=$2 WHERE id=$3", 
-		input.Username, input.Telephone, id)
+    shard := app.Shards.GetShard(id)
+    
+    // 1. On force Postgres à lire l'ID comme un UUID ($4::uuid)
+    query := "UPDATE users SET username=$1, telephone=$2, email=$3 WHERE id=$4::uuid"
+    
+    // 2. Exécution avec log d'erreur
+    _, err := shard.Exec(c.Request.Context(), query, 
+        input.Username, 
+        input.Telephone, 
+        input.Email, 
+        id,
+    )
 
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Update failed"})
-		return
-	}
+    if err != nil {
+        fmt.Printf("❌ Erreur SQL Update: %v\n", err) 
+        c.JSON(http.StatusInternalServerError, gin.H{
+            "error": "Update failed",
+            "details": err.Error(),
+        })
+        return
+    }
 
-	app.Redis.Client.Del(c.Request.Context(), "session:"+id)
-	c.JSON(http.StatusOK, gin.H{"message": "User profile updated"})
+    app.Redis.Client.Del(c.Request.Context(), "session:"+id)
+    // CORRECTION ICI : Le message est sur une seule ligne
+    c.JSON(http.StatusOK, gin.H{"message": "User profile updated"})
 }
+
+
 
 func (app *App) deleteUser(c *gin.Context) {
 	id := c.Param("id")

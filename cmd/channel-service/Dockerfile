@@ -14,7 +14,11 @@ RUN apk --no-cache add ca-certificates
 
 WORKDIR /app
 
+# 1. Copy the binary
 COPY --from=builder /channel-service .
+
+# 2. ADD THIS LINE: Copy the migrations folder
+COPY --from=builder /app/migrations ./migrations
 
 EXPOSE 8085
 
