@@ -46,3 +46,5 @@ docker compose up
  docker exec -it whatsapp-redis redis-cli keys "*"
 
  docker logs whatsapp-groupe4-user-service-1 | grep -i "redis"
+
+ docker logs whatsapp-groupe4-message-service-1 --tail 20

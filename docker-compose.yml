@@ -1,4 +1,185 @@
-version: '3.8'
+# services:
+#   # --- DATABASE SHARDS ---
+#   postgres_shard_0:
+#     image: postgres:16-alpine
+#     container_name: whatsapp-shard-0
+#     ports:
+#       - "5433:5432"
+#     environment:
+#       POSTGRES_USER: whatsapp
+#       POSTGRES_PASSWORD: whatsapp_secret
+#       POSTGRES_DB: whatsapp_shard_0
+#     volumes:
+#       - postgres_data_0:/var/lib/postgresql/data
+#     networks:
+#       - whatsapp-network
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U whatsapp -d whatsapp_shard_0"]
+#       interval: 5s
+#       timeout: 5s
+#       retries: 5
+
+#   postgres_shard_1:
+#     image: postgres:16-alpine
+#     container_name: whatsapp-shard-1
+#     ports:
+#       - "5434:5432"
+#     environment:
+#       POSTGRES_USER: whatsapp
+#       POSTGRES_PASSWORD: whatsapp_secret
+#       POSTGRES_DB: whatsapp_shard_1
+#     volumes:
+#       - postgres_data_1:/var/lib/postgresql/data
+#     networks:
+#       - whatsapp-network
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U whatsapp -d whatsapp_shard_1"]
+#       interval: 5s
+#       timeout: 5s
+#       retries: 5
+
+#   # --- INFRASTRUCTURE ---
+#   redis:
+#     image: redis:7-alpine
+#     container_name: whatsapp-redis
+#     restart: always
+#     ports:
+#       - "6379:6379"
+#     networks:
+#       - whatsapp-network
+#     healthcheck:
+#       test: ["CMD", "redis-cli", "ping"]
+#       interval: 5s
+#       timeout: 3s
+#       retries: 5
+
+#   # --- MICROSERVICES ---
+#   api-gateway:
+#     build:
+#       context: .
+#       dockerfile: ./cmd/api-gateway/Dockerfile # Assure-toi que ce fichier existe
+#     ports:
+#       - "8080:8080"
+#     environment:
+#       - USER_SERVICE_URL=http://user-service:8081
+#       - MESSAGE_SERVICE_URL=http://message-service:8082
+#       - NOTIFICATION_SERVICE_URL=http://notification-service:8083
+#       - AUTH_SERVICE_URL=http://auth-service:8084
+#       - CHANNEL_SERVICE_URL=http://channel-service:8085
+#       - PRESENCE_SERVICE_URL=http://presence-service:8086
+#       - SEARCH_SERVICE_URL=http://search-service:8087
+#       - JWT_SECRET=${JWT_SECRET:-whatsapp-groupe4-secret-default}
+#     depends_on:
+#       - user-service
+#       - message-service
+#       - auth-service
+#     networks:
+#       - whatsapp-network
+
+#   user-service:
+#     build:
+#       context: .
+#       dockerfile: ./cmd/user-service/Dockerfile
+#     ports:
+#       - "${USER_SERVICE_PORT:-8081}:8081"
+#     environment:
+#       - PORT=8081
+#       - REDIS_ADDR=whatsapp-redis:6379
+#       - SHARD_URLS=postgres://whatsapp:whatsapp_secret@whatsapp-shard-0:5432/whatsapp_shard_0?sslmode=disable,postgres://whatsapp:whatsapp_secret@whatsapp-shard-1:5432/whatsapp_shard_1?sslmode=disable
+#     depends_on:
+#       postgres_shard_0: { condition: service_healthy }
+#       postgres_shard_1: { condition: service_healthy }
+#       redis: { condition: service_healthy }
+#     networks:
+#       - whatsapp-network
+#     command: ["sh", "-c", "./user-service || sleep 1000"]
+
+#   message-service:
+#     build:
+#       context: .
+#       dockerfile: ./cmd/message-service/Dockerfile
+#     ports:
+#       - "${MESSAGE_SERVICE_PORT:-8082}:8082"
+#     environment:
+#       - PORT=8082
+#       - DATABASE_URL=postgres://whatsapp:whatsapp_secret@whatsapp-shard-1:5432/whatsapp_shard_1?sslmode=disable
+#     networks:
+#       - whatsapp-network
+
+#   notification-service:
+#     build:
+#       context: .
+#       dockerfile: ./cmd/notification-service/Dockerfile
+#     ports:
+#       - "8083:8083" # Changé de 8083 (conflit avec presence)
+#     environment:
+#       - PORT=8083
+#     networks:
+#       - whatsapp-network
+
+#   auth-service:
+#     build:
+#       context: .
+#       dockerfile: ./cmd/auth-service/Dockerfile
+#     ports:
+#       - "8084:8084" 
+#     environment:
+#       - PORT=8084
+#       - JWT_SECRET=${JWT_SECRET:-whatsapp-groupe4-secret-default}
+#       - DATABASE_URL=postgres://whatsapp:whatsapp_secret@whatsapp-shard-0:5432/whatsapp_shard_0?sslmode=disable
+#       - REDIS_ADDR=whatsapp-redis:6379
+#     depends_on:
+#       redis: { condition: service_healthy }
+#     networks:
+#       - whatsapp-network
+
+#   channel-service:
+#     build:
+#       context: .
+#       dockerfile: ./cmd/channel-service/Dockerfile
+#     ports:
+#       - "8085:8085"
+#     environment:
+#       - PORT=8085
+#       - DATABASE_URL=postgres://whatsapp:whatsapp_secret@whatsapp-shard-0:5432/whatsapp_shard_0?sslmode=disable
+#     networks:
+#       - whatsapp-network
+
+#   presence-service:
+#     build:
+#       context: .
+#       dockerfile: ./cmd/presence-service/Dockerfile
+#     ports:
+#       - "8086:8086" # Changé pour éviter conflit avec 8083
+#     environment:
+#       - PORT=8086
+#     networks:
+#       - whatsapp-network
+
+#   search-service:
+#     build:
+#       context: .
+#       dockerfile: ./cmd/search-service/Dockerfile
+#     ports:
+#       - "8087:8087" # Changé pour éviter conflit avec 8084
+#     environment:
+#       - PORT=8087
+#     networks:
+#       - whatsapp-network
+
+# networks:
+#   whatsapp-network:
+#     driver: bridge
+
+# volumes:
+
+
+#   postgres_data_0:
+#   postgres_data_1:
+
+
+
+
 
 services:
   # --- DATABASE SHARDS ---
@@ -22,10 +203,10 @@ services:
       retries: 5
 
   postgres_shard_1:
-    ports:
-      - "5434:5432"
     image: postgres:16-alpine
     container_name: whatsapp-shard-1
+    ports:
+      - "5434:5432"
     environment:
       POSTGRES_USER: whatsapp
       POSTGRES_PASSWORD: whatsapp_secret
@@ -57,39 +238,41 @@ services:
 
   # --- MICROSERVICES ---
   api-gateway:
-    # ... build config ...
+    build:
+      context: .
+      dockerfile: ./cmd/api-gateway/Dockerfile
+    ports:
+      - "8080:8080"
     environment:
       - USER_SERVICE_URL=http://user-service:8081
       - MESSAGE_SERVICE_URL=http://message-service:8082
-      - PRESENCE_SERVICE_URL=http://presence-service:8083
-      - SEARCH_SERVICE_URL=http://search-service:8084
-      - NOTIFICATION_SERVICE_URL=http://notification-service:8085
-      - AUTH_SERVICE_URL=http://auth-service:8086
-      - CHANNEL_SERVICE_URL=http://channel-service:8087
-      - JWT_SECRET=${JWT_SECRET:-whatsapp-groupe4-secret-change-in-prod}
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8083
+      - AUTH_SERVICE_URL=http://auth-service:8084
+      - CHANNEL_SERVICE_URL=http://channel-service:8085
+      - PRESENCE_SERVICE_URL=http://presence-service:8086
+      - SEARCH_SERVICE_URL=http://search-service:8087
+      - JWT_SECRET=${JWT_SECRET:-whatsapp-groupe4-secret-default}
     depends_on:
-      - user-service
-      - message-service
-      - auth-service
-
+      user-service: { condition: service_started }
+      message-service: { condition: service_started }
+      auth-service: { condition: service_started }
+    networks:
+      - whatsapp-network
 
   user-service:
     build:
       context: .
       dockerfile: ./cmd/user-service/Dockerfile
     ports:
-      - "${USER_SERVICE_PORT:-8081}:8081"
+      - "8081:8081"
     environment:
       - PORT=8081
       - REDIS_ADDR=whatsapp-redis:6379
       - SHARD_URLS=postgres://whatsapp:whatsapp_secret@whatsapp-shard-0:5432/whatsapp_shard_0?sslmode=disable,postgres://whatsapp:whatsapp_secret@whatsapp-shard-1:5432/whatsapp_shard_1?sslmode=disable
     depends_on:
-      postgres_shard_0:
-        condition: service_healthy
-      postgres_shard_1:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      postgres_shard_0: { condition: service_healthy }
+      postgres_shard_1: { condition: service_healthy }
+      redis: { condition: service_healthy }
     networks:
       - whatsapp-network
 
@@ -98,15 +281,15 @@ services:
       context: .
       dockerfile: ./cmd/auth-service/Dockerfile
     ports:
-      - "${AUTH_SERVICE_PORT:-8084}:8084"
+      - "8084:8084" 
     environment:
       - PORT=8084
-      - JWT_SECRET=${JWT_SECRET}
       - DATABASE_URL=postgres://whatsapp:whatsapp_secret@whatsapp-shard-0:5432/whatsapp_shard_0?sslmode=disable
       - REDIS_ADDR=whatsapp-redis:6379
+      - JWT_SECRET=${JWT_SECRET:-whatsapp-groupe4-secret-default}
     depends_on:
-      redis:
-        condition: service_healthy
+      postgres_shard_0: { condition: service_healthy }
+      redis: { condition: service_healthy }
     networks:
       - whatsapp-network
 
@@ -115,21 +298,12 @@ services:
       context: .
       dockerfile: ./cmd/message-service/Dockerfile
     ports:
-      - "${MESSAGE_SERVICE_PORT:-8082}:8082"
+      - "8082:8082"
     environment:
       - PORT=8082
       - DATABASE_URL=postgres://whatsapp:whatsapp_secret@whatsapp-shard-1:5432/whatsapp_shard_1?sslmode=disable
-    networks:
-      - whatsapp-network
-
-  notification-service:
-    build:
-      context: .
-      dockerfile: ./cmd/notification-service/Dockerfile
-    ports:
-      - "${NOTIFICATION_SERVICE_PORT:-8083}:8083"
-    environment:
-      - PORT=8083
+    depends_on:
+      postgres_shard_1: { condition: service_healthy }
     networks:
       - whatsapp-network
 
@@ -142,6 +316,22 @@ services:
     environment:
       - PORT=8085
       - DATABASE_URL=postgres://whatsapp:whatsapp_secret@whatsapp-shard-0:5432/whatsapp_shard_0?sslmode=disable
+    depends_on:
+      postgres_shard_0: { condition: service_healthy }
+    networks:
+      - whatsapp-network
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: ./cmd/notification-service/Dockerfile
+    ports:
+      - "8083:8083"
+    environment:
+      - PORT=8083
+      - DATABASE_URL=postgres://whatsapp:whatsapp_secret@whatsapp-shard-1:5432/whatsapp_shard_1?sslmode=disable
+    depends_on:
+      postgres_shard_1: { condition: service_healthy }
     networks:
       - whatsapp-network
 
@@ -150,9 +340,12 @@ services:
       context: .
       dockerfile: ./cmd/presence-service/Dockerfile
     ports:
-      - "8083:8083"
+      - "8086:8086"
     environment:
-      - PORT=8083
+      - PORT=8086
+      - DATABASE_URL=postgres://whatsapp:whatsapp_secret@whatsapp-shard-0:5432/whatsapp_shard_0?sslmode=disable
+    depends_on:
+      postgres_shard_0: { condition: service_healthy }
     networks:
       - whatsapp-network
 
@@ -161,9 +354,12 @@ services:
       context: .
       dockerfile: ./cmd/search-service/Dockerfile
     ports:
-      - "8084:8084"
+      - "8087:8087"
     environment:
-      - PORT=8084
+      - PORT=8087
+      - DATABASE_URL=postgres://whatsapp:whatsapp_secret@whatsapp-shard-1:5432/whatsapp_shard_1?sslmode=disable
+    depends_on:
+      postgres_shard_1: { condition: service_healthy }
     networks:
       - whatsapp-network
 

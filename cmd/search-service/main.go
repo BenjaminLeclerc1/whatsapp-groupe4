@@ -1,7 +1,8 @@
 package main
 
 import (
-	"fmt"
+	"context"
+	// "fmt"
 	"log"
 	"net/http"
 	"os"
@@ -10,9 +11,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
-// Message représente un message indexé pour la recherche
+// Message represents an indexed message
 type Message struct {
 	ID        string    `json:"id"`
 	SenderID  string    `json:"sender_id"`
@@ -22,7 +27,7 @@ type Message struct {
 	Status    string    `json:"status"`
 }
 
-// SearchResult représente un résultat de recherche avec score
+// SearchResult represents a result with scoring
 type SearchResult struct {
 	Message   Message `json:"message"`
 	Score     int     `json:"score"`
@@ -30,27 +35,43 @@ type SearchResult struct {
 }
 
 var (
-	// Index des messages pour la recherche
-	messages = make(map[string]Message)
-	// Index inversé : mot -> liste de message IDs
+	messages      = make(map[string]Message)
 	invertedIndex = make(map[string][]string)
 	mu            sync.RWMutex
 )
 
 func main() {
+	port := getEnv("PORT", "8084")
+	// Search maps to Shard 1 (where messages live)
+	databaseURL := getEnv("DATABASE_URL", "postgres://whatsapp:whatsapp_secret@postgres_shard_1:5432/whatsapp_shard_1?sslmode=disable")
+
+	// 1. Initialize DB Pool
+	pool, err := initDB(databaseURL)
+	if err != nil {
+		log.Fatalf("Database connection failed: %v", err)
+	}
+	defer pool.Close()
+
+	// 2. Run Migrations (using unique tracking table)
+	runMigrations(databaseURL)
+
 	router := gin.Default()
 
-	port := getEnv("PORT", "8084")
-
-	// Health check
+	// Health check with DB status
 	router.GET("/health", func(c *gin.Context) {
+		err := pool.Ping(context.Background())
+		dbStatus := "connected"
+		if err != nil {
+			dbStatus = "disconnected"
+		}
 		c.JSON(http.StatusOK, gin.H{
-			"status":  "healthy",
-			"service": "search-service",
+			"status":   "healthy",
+			"service":  "search-service",
+			"database": dbStatus,
 		})
 	})
 
-	// Routes de recherche
+	// Search Routes
 	api := router.Group("/api/v1/search")
 	{
 		api.GET("/messages", searchMessages)
@@ -61,31 +82,41 @@ func main() {
 		api.GET("/stats", getSearchStats)
 	}
 
-	log.Printf("Search Service démarré sur le port %s", port)
-
+	log.Printf("Search Service started on port %s", port)
 	if err := router.Run(":" + port); err != nil {
-		log.Fatalf("Erreur démarrage serveur: %v", err)
+		log.Fatalf("Server failed: %v", err)
 	}
 }
 
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
+// --- DATABASE LOGIC ---
+
+func initDB(databaseURL string) (*pgxpool.Pool, error) {
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, err
 	}
-	return defaultValue
+	return pgxpool.NewWithConfig(context.Background(), config)
 }
 
-// indexMessage indexe un nouveau message pour la recherche
+func runMigrations(databaseURL string) {
+	// Add unique migration table to avoid collisions on Shard 1
+	targetURL := databaseURL + "&x-migrations-table=migrations_search"
+
+	m, err := migrate.New("file://migrations/search-service", targetURL)
+	if err != nil {
+		log.Fatalf("Search migration init failed: %v", err)
+	}
+
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		log.Fatalf("Search migration up failed: %v", err)
+	}
+	log.Println("Search migrations applied successfully!")
+}
+
+// --- SEARCH LOGIC (In-Memory Indexing) ---
+
 func indexMessage(c *gin.Context) {
-	var input struct {
-		ID        string    `json:"id" binding:"required"`
-		SenderID  string    `json:"sender_id" binding:"required"`
-		Content   string    `json:"content" binding:"required"`
-		ChatID    string    `json:"chat_id" binding:"required"`
-		CreatedAt time.Time `json:"created_at"`
-		Status    string    `json:"status"`
-	}
-
+	var input Message
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -94,341 +125,147 @@ func indexMessage(c *gin.Context) {
 	if input.CreatedAt.IsZero() {
 		input.CreatedAt = time.Now()
 	}
-	if input.Status == "" {
-		input.Status = "sent"
-	}
-
-	message := Message{
-		ID:        input.ID,
-		SenderID:  input.SenderID,
-		Content:   input.Content,
-		ChatID:    input.ChatID,
-		CreatedAt: input.CreatedAt,
-		Status:    input.Status,
-	}
 
 	mu.Lock()
 	defer mu.Unlock()
 
-	// Stocker le message
-	messages[message.ID] = message
-
-	// Indexer les mots du contenu
-	words := tokenize(message.Content)
+	messages[input.ID] = input
+	words := tokenize(input.Content)
 	for _, word := range words {
-		if !contains(invertedIndex[word], message.ID) {
-			invertedIndex[word] = append(invertedIndex[word], message.ID)
+		if !contains(invertedIndex[word], input.ID) {
+			invertedIndex[word] = append(invertedIndex[word], input.ID)
 		}
 	}
 
-	log.Printf("Message indexé: %s (mots: %v)", message.ID, words)
-
-	c.JSON(http.StatusOK, gin.H{
-		"message":      "Message indexé avec succès",
-		"message_id":   message.ID,
-		"words_indexed": len(words),
-	})
+	c.JSON(http.StatusOK, gin.H{"status": "indexed", "message_id": input.ID})
 }
 
-// removeFromIndex supprime un message de l'index
-func removeFromIndex(c *gin.Context) {
-	messageID := c.Param("messageId")
-
-	mu.Lock()
-	defer mu.Unlock()
-
-	message, exists := messages[messageID]
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Message non trouvé dans l'index"})
-		return
-	}
-
-	// Supprimer des index inversés
-	words := tokenize(message.Content)
-	for _, word := range words {
-		invertedIndex[word] = removeString(invertedIndex[word], messageID)
-		if len(invertedIndex[word]) == 0 {
-			delete(invertedIndex, word)
-		}
-	}
-
-	// Supprimer le message
-	delete(messages, messageID)
-
-	log.Printf("Message supprimé de l'index: %s", messageID)
-
-	c.JSON(http.StatusOK, gin.H{"message": "Message supprimé de l'index"})
-}
-
-// searchMessages recherche des messages par mot-clé
 func searchMessages(c *gin.Context) {
 	query := c.Query("q")
 	if query == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Paramètre 'q' (query) requis"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Query param 'q' is required"})
 		return
 	}
 
-	limitStr := c.DefaultQuery("limit", "50")
-	var limit int
-	if _, err := fmt.Sscanf(limitStr, "%d", &limit); err != nil {
-		limit = 50
-	}
-
 	mu.RLock()
-	defer mu.RUnlock()
-
 	results := performSearch(query, "", "")
+	mu.RUnlock()
 
-	// Limiter les résultats
-	if len(results) > limit {
-		results = results[:limit]
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"query":   query,
-		"results": results,
-		"count":   len(results),
-	})
+	c.JSON(http.StatusOK, gin.H{"results": results, "count": len(results)})
 }
 
-// searchInChat recherche des messages dans un chat spécifique
 func searchInChat(c *gin.Context) {
 	chatID := c.Param("chatId")
 	query := c.Query("q")
 
-	if query == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Paramètre 'q' (query) requis"})
-		return
-	}
-
-	limitStr := c.DefaultQuery("limit", "50")
-	var limit int
-	if _, err := fmt.Sscanf(limitStr, "%d", &limit); err != nil {
-		limit = 50
-	}
-
 	mu.RLock()
-	defer mu.RUnlock()
-
 	results := performSearch(query, chatID, "")
+	mu.RUnlock()
 
-	// Limiter les résultats
-	if len(results) > limit {
-		results = results[:limit]
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"query":   query,
-		"chat_id": chatID,
-		"results": results,
-		"count":   len(results),
-	})
+	c.JSON(http.StatusOK, gin.H{"results": results, "count": len(results)})
 }
 
-// searchByUser recherche des messages d'un utilisateur spécifique
 func searchByUser(c *gin.Context) {
 	userID := c.Param("userId")
 	query := c.Query("q")
 
-	if query == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Paramètre 'q' (query) requis"})
-		return
-	}
-
-	limitStr := c.DefaultQuery("limit", "50")
-	var limit int
-	if _, err := fmt.Sscanf(limitStr, "%d", &limit); err != nil {
-		limit = 50
-	}
-
 	mu.RLock()
-	defer mu.RUnlock()
-
 	results := performSearch(query, "", userID)
+	mu.RUnlock()
 
-	// Limiter les résultats
-	if len(results) > limit {
-		results = results[:limit]
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"query":   query,
-		"user_id": userID,
-		"results": results,
-		"count":   len(results),
-	})
+	c.JSON(http.StatusOK, gin.H{"results": results, "count": len(results)})
 }
 
-// getSearchStats retourne des statistiques sur l'index
+func removeFromIndex(c *gin.Context) {
+	msgID := c.Param("messageId")
+	mu.Lock()
+	defer mu.Unlock()
+
+	if msg, exists := messages[msgID]; exists {
+		words := tokenize(msg.Content)
+		for _, word := range words {
+			invertedIndex[word] = removeString(invertedIndex[word], msgID)
+		}
+		delete(messages, msgID)
+		c.JSON(http.StatusOK, gin.H{"message": "removed"})
+		return
+	}
+	c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+}
+
 func getSearchStats(c *gin.Context) {
 	mu.RLock()
 	defer mu.RUnlock()
-
 	c.JSON(http.StatusOK, gin.H{
-		"total_messages":     len(messages),
-		"total_words_indexed": len(invertedIndex),
-		"service":            "search-service",
+		"indexed_messages": len(messages),
+		"unique_words":    len(invertedIndex),
 	})
 }
 
-// performSearch effectue la recherche réelle
+// --- UTILS ---
+
 func performSearch(query, chatID, userID string) []SearchResult {
 	queryWords := tokenize(query)
 	if len(queryWords) == 0 {
 		return []SearchResult{}
 	}
 
-	// Map pour compter les occurrences par message
-	messageScores := make(map[string]int)
-
-	// Chercher les messages contenant les mots de la requête
+	scores := make(map[string]int)
 	for _, word := range queryWords {
-		if messageIDs, exists := invertedIndex[word]; exists {
-			for _, msgID := range messageIDs {
-				messageScores[msgID]++
+		if ids, exists := invertedIndex[word]; exists {
+			for _, id := range ids {
+				scores[id]++
 			}
 		}
 	}
 
-	// Construire les résultats
 	var results []SearchResult
-	for msgID, score := range messageScores {
-		message, exists := messages[msgID]
-		if !exists {
+	for id, score := range scores {
+		msg := messages[id]
+		if (chatID != "" && msg.ChatID != chatID) || (userID != "" && msg.SenderID != userID) {
 			continue
 		}
-
-		// Filtrer par chat si spécifié
-		if chatID != "" && message.ChatID != chatID {
-			continue
-		}
-
-		// Filtrer par utilisateur si spécifié
-		if userID != "" && message.SenderID != userID {
-			continue
-		}
-
-		// Créer un highlight du texte
-		highlight := createHighlight(message.Content, queryWords)
-
 		results = append(results, SearchResult{
-			Message:   message,
+			Message:   msg,
 			Score:     score,
-			Highlight: highlight,
+			Highlight: createHighlight(msg.Content, queryWords),
 		})
 	}
-
-	// Trier par score (décroissant)
-	for i := 0; i < len(results)-1; i++ {
-		for j := i + 1; j < len(results); j++ {
-			if results[j].Score > results[i].Score {
-				results[i], results[j] = results[j], results[i]
-			}
-		}
-	}
-
 	return results
 }
 
-// tokenize découpe un texte en mots normalisés
 func tokenize(text string) []string {
-	// Convertir en minuscules
 	text = strings.ToLower(text)
-
-	// Séparer par les espaces et la ponctuation
-	separators := []string{" ", ",", ".", "!", "?", ";", ":", "'", "\"", "(", ")", "[", "]", "\n", "\t"}
-	words := []string{text}
-
-	for _, sep := range separators {
-		var newWords []string
-		for _, word := range words {
-			parts := strings.Split(word, sep)
-			for _, part := range parts {
-				if part != "" {
-					newWords = append(newWords, part)
-				}
-			}
-		}
-		words = newWords
+	f := func(c rune) bool {
+		return !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))
 	}
-
-	// Filtrer les mots trop courts et les mots vides communs
-	stopWords := map[string]bool{
-		"le": true, "la": true, "les": true, "un": true, "une": true, "des": true,
-		"de": true, "du": true, "a": true, "et": true, "ou": true, "est": true,
-		"the": true, "an": true, "and": true, "or": true, "is": true,
-	}
-
-	var filtered []string
-	for _, word := range words {
-		if len(word) >= 2 && !stopWords[word] {
-			filtered = append(filtered, word)
-		}
-	}
-
-	return filtered
+	return strings.FieldsFunc(text, f)
 }
 
-// createHighlight crée un extrait avec les mots recherchés mis en évidence
 func createHighlight(content string, queryWords []string) string {
-	lowerContent := strings.ToLower(content)
-
-	// Trouver la première occurrence d'un mot de recherche
-	firstPos := -1
-	for _, word := range queryWords {
-		pos := strings.Index(lowerContent, word)
-		if pos != -1 && (firstPos == -1 || pos < firstPos) {
-			firstPos = pos
-		}
+	// Simple slice for preview
+	if len(content) > 100 {
+		return content[:100] + "..."
 	}
-
-	if firstPos == -1 {
-		// Aucune occurrence trouvée, retourner le début
-		if len(content) > 100 {
-			return content[:100] + "..."
-		}
-		return content
-	}
-
-	// Extraire un contexte autour du mot trouvé
-	start := firstPos - 30
-	if start < 0 {
-		start = 0
-	}
-
-	end := firstPos + 100
-	if end > len(content) {
-		end = len(content)
-	}
-
-	highlight := content[start:end]
-
-	if start > 0 {
-		highlight = "..." + highlight
-	}
-	if end < len(content) {
-		highlight = highlight + "..."
-	}
-
-	return highlight
+	return content
 }
 
-// Fonctions utilitaires
 func contains(slice []string, item string) bool {
 	for _, s := range slice {
-		if s == item {
-			return true
-		}
+		if s == item { return true }
 	}
 	return false
 }
 
 func removeString(slice []string, item string) []string {
-	result := []string{}
+	var result []string
 	for _, s := range slice {
-		if s != item {
-			result = append(result, s)
-		}
+		if s != item { result = append(result, s) }
 	}
 	return result
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" { return value }
+	return defaultValue
 }

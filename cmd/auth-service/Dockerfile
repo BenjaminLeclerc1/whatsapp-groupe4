@@ -14,7 +14,12 @@ FROM alpine:3.19
 
 WORKDIR /app
 
+# 1. Copier le binaire
 COPY --from=builder /auth-service .
+
+# 2. CRITICAL: Copier les fichiers de migration
+# C'est ce qui permet de créer les tables messages, channels, etc.
+COPY --from=builder /app/migrations ./migrations
 
 EXPOSE 8084
 
