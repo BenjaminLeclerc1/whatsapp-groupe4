@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"net/http/httputil"
+    "net/url"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -41,24 +43,28 @@ func main() {
 	})
 
 	// Proxy vers les microservices
-	api := router.Group("/api/v1")
-	{
-		api.Any("/users/*path", proxyHandler(userServiceURL))
-		api.Any("/messages/*path", proxyHandler(messageServiceURL))
-		api.Any("/presence/*path", proxyHandler(presenceServiceURL))
-		api.Any("/search/*path", proxyHandler(searchServiceURL))
-		// Routes publiques d'authentification (pas de JWT requis ici)
-		api.Any("/auth/*path", proxyHandler(authServiceURL))
+	// Proxy vers les microservices
+    api := router.Group("/api/v1")
+    {
+        // --- PUBLIC ROUTES ---
+        api.Any("/auth/*path", proxyHandler(authServiceURL))
+        api.Any("/search/*path", proxyHandler(searchServiceURL))
+        api.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok"}) })
 
-		// Toutes les autres routes /api/v1/** nécessitent un JWT valide
-		protected := api.Group("/", authMiddleware(jwtSecret))
-		{
-			protected.Any("/users/*path", proxyHandler(userServiceURL))
-			protected.Any("/messages/*path", proxyHandler(messageServiceURL))
-			protected.Any("/notification/*path", proxyHandler(notificationServiceURL))
-			protected.Any("/channels/*path", proxyHandler(channelServiceURL))
-		}
-	}
+        // --- PROTECTED ROUTES (JWT Required) ---
+        protected := api.Group("/", authMiddleware(jwtSecret))
+        {
+            protected.Any("/users/*path", proxyHandler(userServiceURL))
+            protected.Any("/messages/*path", proxyHandler(messageServiceURL))
+            protected.Any("/presence/*path", proxyHandler(presenceServiceURL))
+            protected.Any("/notification/*path", proxyHandler(notificationServiceURL))
+            protected.Any("/channels/*path", proxyHandler(channelServiceURL))
+            
+            // 🔥 ADD THE CHAT SERVICE HERE
+            chatServiceURL := getEnv("CHAT_SERVICE_URL", "http://localhost:8088")
+            protected.Any("/chats/*path", proxyHandler(chatServiceURL))
+        }
+    }
 
 	port := getEnv("API_GATEWAY_PORT", "8080")
 
@@ -92,14 +98,34 @@ func requireEnv(key string) string {
 }
 
 func proxyHandler(targetURL string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		path := c.Param("path")
-		c.JSON(http.StatusOK, gin.H{
-			"message":    "Proxy vers " + targetURL + path,
-			"target_url": targetURL,
-			"path":       path,
-		})
-	}
+    return func(c *gin.Context) {
+        // 1. Parse the destination service URL (e.g., http://chat-service:8088)
+        remote, err := url.Parse(targetURL)
+        if err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid target URL"})
+            return
+        }
+
+        // 2. Create the Reverse Proxy
+        proxy := httputil.NewSingleHostReverseProxy(remote)
+        
+        // 3. The Director modifies the request before it leaves the Gateway
+        proxy.Director = func(req *http.Request) {
+            req.Header = c.Request.Header
+            req.Host = remote.Host
+            req.URL.Scheme = remote.Scheme
+            req.URL.Host = remote.Host
+            
+            // 🔥 CRITICAL: Get UserID from JWT (set in authMiddleware) 
+            // and pass it to the microservice as a header
+            if userID, exists := c.Get("user_id"); exists {
+                req.Header.Set("X-User-ID", userID.(string))
+            }
+        }
+
+        // 4. Send the request!
+        proxy.ServeHTTP(c.Writer, c.Request)
+    }
 }
 
 func authMiddleware(jwtSecret string) gin.HandlerFunc {
