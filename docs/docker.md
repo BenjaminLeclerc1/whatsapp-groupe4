@@ -1,6 +1,8 @@
 # Construire et démarrer tous les services
+# Start
 docker-compose up -d
 
+# Build
 docker compose up --build
 
 # Voir les logs
