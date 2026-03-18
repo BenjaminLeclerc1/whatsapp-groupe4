@@ -2,7 +2,7 @@ package main
 
 import (
 	"bytes"
-	"database/sql"
+	// "database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
