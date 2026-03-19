@@ -1,0 +1,13 @@
+---
+description: Tout passe par Docker, aucune installation locale
+alwaysApply: true
+---
+
+# Environnement Docker uniquement
+
+- **Ne jamais installer ou exécuter d'outils en local** (go, npm, etc.)
+- Toute compilation et exécution se fait via `docker compose build` et `docker compose up`
+- Pour vérifier qu'un service compile : `docker compose build <service-name>`
+- Pour lancer les services : `docker compose up -d`
+- Si une nouvelle dépendance Go est ajoutée, ajouter `RUN go mod tidy` dans le Dockerfile avant le `go build`
+- Les dépendances de la DB sont gérées via `depends_on: postgres: condition: service_healthy`

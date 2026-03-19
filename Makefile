@@ -11,6 +11,11 @@ build:
 	$(GO) build -o bin/api-gateway ./cmd/api-gateway
 	$(GO) build -o bin/user-service ./cmd/user-service
 	$(GO) build -o bin/message-service ./cmd/message-service
+	$(GO) build -o bin/presence-service ./cmd/presence-service
+	$(GO) build -o bin/search-service ./cmd/search-service
+	$(GO) build -o bin/notification-service ./cmd/notification-service
+	$(GO) build -o bin/auth-service ./cmd/auth-service
+	$(GO) build -o bin/channel-service ./cmd/channel-service
 
 run-gateway:
 	$(GO) run ./cmd/api-gateway
@@ -20,6 +25,20 @@ run-user:
 
 run-message:
 	$(GO) run ./cmd/message-service
+
+run-presence:
+	$(GO) run ./cmd/presence-service
+
+run-search:
+	$(GO) run ./cmd/search-service
+run-notification:
+	$(GO) run ./cmd/notification-service
+
+run-auth:
+	$(GO) run ./cmd/auth-service
+
+run-channel:
+	$(GO) run ./cmd/channel-service
 
 test:
 	$(GO) test -v ./...
@@ -53,3 +72,11 @@ fmt:
 # Linter
 lint:
 	golangci-lint run ./...
+
+
+# Redis
+redis:
+	docker run --name whatsapp-redis -p 6379:6379 -d redis:7-alpine
+
+redis-stop:
+	docker stop whatsapp-redis && docker rm whatsapp-redis

@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.22-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
@@ -18,8 +18,15 @@ FROM alpine:3.19
 
 WORKDIR /app
 
-# Copier le binaire compilé
+# 1. Copier le binaire compilé
 COPY --from=builder /api-gateway .
+
+# 2. CRITICAL: Copier le dossier migrations
+# Sans cette ligne, votre code Go ne trouvera jamais les fichiers SQL
+COPY --from=builder /app/migrations ./migrations
+
+# 3. Facultatif: Copier le fichier .env ou config si nécessaire
+# COPY --from=builder /app/.env .
 
 EXPOSE 8080
 

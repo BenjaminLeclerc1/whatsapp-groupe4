@@ -1,167 +1,243 @@
 package main
 
 import (
-	"log"
+	// "bytes"
+	// "encoding/json"
+	// "fmt"
 	"net/http"
 	"os"
-	"sync"
+	"regexp"
+	"strings"
+	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
+
+	"github.com/whatsapp-groupe4/internal/cache"
+	"github.com/whatsapp-groupe4/internal/logger"
+	"github.com/whatsapp-groupe4/internal/sharding"
+	"github.com/whatsapp-groupe4/middleware/auth"
 )
+
+// --- MODELS & STRUCTS ---
 
 type User struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Status   string `json:"status"`
+	ID        string    `json:"id"`
+	Username  string    `json:"username" binding:"required"`
+	Telephone string    `json:"telephone" binding:"required"`
+	Email     string    `json:"email" binding:"required"`
+	Password  string    `json:"password,omitempty"`
+	Role      string    `json:"role"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
-var (
-	users = make(map[string]User)
-	mu    sync.RWMutex
-)
+type App struct {
+	Shards *sharding.ShardManager
+	Redis  *cache.RedisClient
+}
+
+var emailRegex = regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`)
+
+// --- MAIN ---
 
 func main() {
-	router := gin.Default()
+	logger.Init("user-service")
+	defer logger.Close()
 
-	port := getEnv("PORT", "8081")
+	shardURLsEnv := os.Getenv("SHARD_URLS")
+	if shardURLsEnv == "" {
+		logger.Fatal("SHARD_URLS env variable is required")
+	}
+	shardURLs := strings.Split(shardURLsEnv, ",")
 
-	// Health check
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":  "healthy",
-			"service": "user-service",
-		})
-	})
+	runMigrations(shardURLs)
 
-	// Routes utilisateurs
-	api := router.Group("/api/v1/users")
-	{
-		api.GET("", getAllUsers)
-		api.GET("/:id", getUserByID)
-		api.POST("", createUser)
-		api.PUT("/:id", updateUser)
-		api.DELETE("/:id", deleteUser)
+	shardMgr, err := sharding.NewShardManager(shardURLs)
+	if err != nil {
+		logger.Fatal("Failed to init shards: %v", err)
 	}
 
-	log.Printf("User Service démarré sur le port %s", port)
+	rdb := cache.NewRedisClient(getEnv("REDIS_ADDR", "whatsapp-redis:6379"))
 
-	if err := router.Run(":" + port); err != nil {
-		log.Fatalf("Erreur démarrage serveur: %v", err)
+	app := &App{
+		Shards: shardMgr,
+		Redis:  rdb,
+	}
+
+	router := gin.Default()
+
+	router.Use(cors.New(cors.Config{
+    AllowOrigins:     []string{"http://localhost:3000"}, // Your React/Vue URL
+    AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+    AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-User-ID"},
+    ExposeHeaders:    []string{"Content-Length"},
+    AllowCredentials: true,
+    MaxAge:           12 * time.Hour,
+}))
+
+// IMPORTANT: Ensure OPTIONS requests return 200 OK immediately
+router.OPTIONS("/*path", func(c *gin.Context) {
+    c.AbortWithStatus(200)
+})
+
+	api := router.Group("/api/v1/users")
+	{
+		api.POST("/register", app.register)
+		api.POST("/login", app.login)
+		api.POST("/logout", app.logout)
+		api.GET("/search", app.searchUsers)
+		api.GET("/:id", app.getUserByID)
+		api.PUT("/:id", app.updateUser)
+		api.DELETE("/:id", app.deleteUser)
+		api.GET("", app.getAllUsers)
+	}
+
+	port := getEnv("PORT", "8081")
+	logger.Info("User Service started on port %s", port)
+	router.Run(":" + port)
+}
+
+// --- HANDLERS ---
+
+func (app *App) register(c *gin.Context) {
+	var user User
+	if err := c.ShouldBindJSON(&user); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	user.ID = uuid.New().String()
+	user.CreatedAt = time.Now()
+	user.Status = "active"
+	user.Role = "user"
+
+	shard := app.Shards.GetShard(user.ID)
+	query := `INSERT INTO users (id, username, telephone, email, password, role, status) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	_, err := shard.Exec(c.Request.Context(), query, user.ID, user.Username, user.Telephone, user.Email, string(hashedPassword), user.Role, user.Status)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Registration failed"})
+		return
+	}
+	user.Password = ""
+	c.JSON(http.StatusCreated, user)
+}
+
+func (app *App) login(c *gin.Context) {
+	var input struct {
+		Email    string `json:"email" binding:"required"`
+		Password string `json:"password" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Credentials required"})
+		return
+	}
+	if !emailRegex.MatchString(input.Email) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Format d'email invalide"})
+		return
+	}
+	var user User
+	found := false
+	for _, shard := range app.Shards.Shards {
+		err := shard.QueryRow(c.Request.Context(), "SELECT id, password, role FROM users WHERE email = $1", input.Email).Scan(&user.ID, &user.Password, &user.Role)
+		if err == nil {
+			found = true
+			break
+		}
+	}
+	if !found || bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)) != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		return
+	}
+	token, _ := auth.GenerateToken(user.ID, user.Role)
+	c.JSON(http.StatusOK, gin.H{"token": token, "user_id": user.ID})
+}
+
+func (app *App) logout(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
+}
+
+func (app *App) searchUsers(c *gin.Context) {
+	queryParam := c.Query("q")
+	var results []map[string]string
+	for _, shard := range app.Shards.Shards {
+		rows, err := shard.Query(c.Request.Context(), "SELECT id, username FROM users WHERE username ILIKE $1", "%"+queryParam+"%")
+		if err != nil { continue }
+		defer rows.Close()
+		for rows.Next() {
+			var id, username string
+			rows.Scan(&id, &username)
+			results = append(results, map[string]string{"id": id, "username": username})
+		}
+	}
+	c.JSON(http.StatusOK, results)
+}
+
+func (app *App) getUserByID(c *gin.Context) {
+	id := c.Param("id")
+	var user User
+	shard := app.Shards.GetShard(id)
+	err := shard.QueryRow(c.Request.Context(), "SELECT id, username, telephone, email, role, status FROM users WHERE id = $1", id).Scan(&user.ID, &user.Username, &user.Telephone, &user.Email, &user.Role, &user.Status)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+	c.JSON(http.StatusOK, user)
+}
+
+func (app *App) updateUser(c *gin.Context) {
+	id := c.Param("id")
+	var input User
+	c.ShouldBindJSON(&input)
+	shard := app.Shards.GetShard(id)
+	shard.Exec(c.Request.Context(), "UPDATE users SET username=$1, telephone=$2, email=$3 WHERE id=$4", input.Username, input.Telephone, input.Email, id)
+	c.JSON(http.StatusOK, gin.H{"message": "User updated"})
+}
+
+func (app *App) deleteUser(c *gin.Context) {
+	id := c.Param("id")
+	shard := app.Shards.GetShard(id)
+	shard.Exec(c.Request.Context(), "DELETE FROM users WHERE id=$1", id)
+	c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
+}
+
+func (app *App) getAllUsers(c *gin.Context) {
+	var allUsers []User
+	for _, shard := range app.Shards.Shards {
+		rows, _ := shard.Query(c.Request.Context(), "SELECT id, username, email FROM users")
+		for rows.Next() {
+			var u User
+			rows.Scan(&u.ID, &u.Username, &u.Email)
+			allUsers = append(allUsers, u)
+		}
+		rows.Close()
+	}
+	c.JSON(http.StatusOK, allUsers)
+}
+
+// --- HELPERS ---
+
+func runMigrations(shardURLs []string) {
+	for _, url := range shardURLs {
+		targetURL := url
+		if strings.Contains(url, "?") {
+			targetURL += "&x-migrations-table=migrations_users"
+		} else {
+			targetURL += "?x-migrations-table=migrations_users"
+		}
+		m, err := migrate.New("file://migrations/user-service", targetURL)
+		if err != nil { continue }
+		m.Up()
 	}
 }
 
 func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
+	if v := os.Getenv(key); v != "" { return v }
 	return defaultValue
-}
-
-func getAllUsers(c *gin.Context) {
-	mu.RLock()
-	defer mu.RUnlock()
-
-	userList := make([]User, 0, len(users))
-	for _, user := range users {
-		userList = append(userList, user)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"users": userList,
-		"count": len(userList),
-	})
-}
-
-func getUserByID(c *gin.Context) {
-	id := c.Param("id")
-
-	mu.RLock()
-	user, exists := users[id]
-	mu.RUnlock()
-
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Utilisateur non trouvé"})
-		return
-	}
-
-	c.JSON(http.StatusOK, user)
-}
-
-func createUser(c *gin.Context) {
-	var input struct {
-		Username string `json:"username" binding:"required"`
-		Email    string `json:"email" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	user := User{
-		ID:       uuid.New().String(),
-		Username: input.Username,
-		Email:    input.Email,
-		Status:   "active",
-	}
-
-	mu.Lock()
-	users[user.ID] = user
-	mu.Unlock()
-
-	c.JSON(http.StatusCreated, user)
-}
-
-func updateUser(c *gin.Context) {
-	id := c.Param("id")
-
-	mu.Lock()
-	defer mu.Unlock()
-
-	user, exists := users[id]
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Utilisateur non trouvé"})
-		return
-	}
-
-	var input struct {
-		Username string `json:"username"`
-		Email    string `json:"email"`
-		Status   string `json:"status"`
-	}
-
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if input.Username != "" {
-		user.Username = input.Username
-	}
-	if input.Email != "" {
-		user.Email = input.Email
-	}
-	if input.Status != "" {
-		user.Status = input.Status
-	}
-
-	users[id] = user
-	c.JSON(http.StatusOK, user)
-}
-
-func deleteUser(c *gin.Context) {
-	id := c.Param("id")
-
-	mu.Lock()
-	defer mu.Unlock()
-
-	if _, exists := users[id]; !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Utilisateur non trouvé"})
-		return
-	}
-
-	delete(users, id)
-	c.JSON(http.StatusOK, gin.H{"message": "Utilisateur supprimé"})
 }

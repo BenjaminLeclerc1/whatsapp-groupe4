@@ -1,0 +1,26 @@
+---
+description: Priorités fondamentales du projet - performance maximale et sécurité
+alwaysApply: true
+---
+
+# Priorités du projet
+
+Ce projet a deux objectifs prioritaires absolus : **performance maximale** et **sécurité**.
+
+## Performance
+
+- Réduire les round-trips DB : utiliser des CTE pour combiner vérifications et opérations en une seule requête
+- Keyset pagination uniquement (pas d'OFFSET) pour des performances O(log n) constantes
+- Pre-allouer les slices avec `make([]T, 0, capacity)` pour éviter les réallocations
+- Timeouts différenciés : écriture (3s), lecture (5s), health check (2s)
+- Pool de connexions PostgreSQL agressif : min=10, max=50
+
+## Sécurité
+
+- Vérifier le membership avant tout accès aux données d'un chat
+- Ne jamais révéler l'existence d'une ressource si l'utilisateur n'y a pas accès (message "forbidden" générique)
+- Requêtes SQL toujours paramétrées (`$1, $2, ...`), jamais d'interpolation
+- Validation stricte de tous les inputs (UUID, longueur contenu, TrimSpace)
+- Messages d'erreur opaques : ne jamais exposer d'erreur interne au client
+- Rate limiting sur les endpoints d'écriture
+- Limiter la taille du body HTTP (MaxHeaderBytes: 64KB)
