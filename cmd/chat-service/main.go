@@ -38,23 +38,35 @@ func main() {
 	handler := chats.NewHandler(svc)
 
 	// 3. Routes
-	r := gin.Default()
+	// r := gin.Default()
 	
-	// FIX: Changed middleware.Auth() to middleware.ExtractUserID()
-	// to match your internal/middleware/auth.go file
-	api := r.Group("/api/v1/chats", middleware.ExtractUserID())
-	{
-		api.POST("/", handler.CreateChat)
-		api.GET("/my", handler.GetMyChats)
-	}
+	// // FIX: Changed middleware.Auth() to middleware.ExtractUserID()
+	// // to match your internal/middleware/auth.go file
+	// api := r.Group("/api/v1/chats", middleware.ExtractUserID())
+	// {
+	// 	api.POST("/", handler.CreateChat)
+	// 	api.GET("/my", handler.GetMyChats)
+	// }
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8083"
-	}
+	// 3. Routes
+  r := gin.Default()
 
-	log.Printf("Chat Service running on :%s", port)
-	r.Run(":" + port)
+    // 🛑 CRITICAL FOR DOCKER: Stop Gin from redirecting to internal hostnames
+    r.RedirectTrailingSlash = false
+    r.RedirectFixedPath = false
+
+    api := r.Group("/api/v1/chats")
+    {
+        api.Use(middleware.ExtractUserID())
+
+        // ✅ Handle both so Gin never feels the need to redirect
+        api.GET("", handler.GetMyChats)  // matches /api/v1/chats
+        api.GET("/", handler.GetMyChats) // matches /api/v1/chats/
+        
+        api.POST("", handler.CreateChat)
+        api.POST("/", handler.CreateChat)
+    }
+    r.Run(":8088")
 }
 
 func initDB(databaseURL string) (*pgxpool.Pool, error) {
