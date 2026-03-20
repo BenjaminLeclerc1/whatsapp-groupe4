@@ -5,7 +5,7 @@
 docker compose up --build
 
 # Start
-docker-compose up -d
+docker compose up -d
 # Voir les logs
 docker-compose logs -f
 

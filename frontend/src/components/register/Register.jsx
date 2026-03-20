@@ -36,25 +36,36 @@ function Register() {
       return;
     }
     if (!passwordRegex.test(formData.password)) {
-      setError("Le mot de passe doit contenir au moins 8 caractères, une majuscule et un chiffre.");
+      setError(
+        "Le mot de passe doit contenir au moins 8 caractères, une majuscule et un chiffre.",
+      );
       return;
     }
 
     try {
-      const apiUrl = process.env.REACT_APP_API_URL_AUTH || "http://localhost:8080/api/v1";
-      
+      const apiUrl =
+        process.env.REACT_APP_API_URL_AUTH || "http://localhost:8081/api/v1";
+
       // Axios call to your Go backend
       const response = await axios.post(`${apiUrl}/users/register`, formData);
 
       // 2. Success: Save session data
       localStorage.setItem("token", response.data.token);
-      localStorage.setItem("refresh_token", response.data.refresh_token);
-      localStorage.setItem("user", JSON.stringify(response.data.user));
+
+      // Handle cases where the backend might send 'user_id' instead of 'user' object
+      const userData = response.data.user || { id: response.data.user_id };
+      localStorage.setItem("user", JSON.stringify(userData));
+
+      console.log("Registration successful, redirecting...");
 
       // 3. Redirect to App
-      navigate("/chat");
+      window.location.href = "/chat";
+      // navigate("/chat");
     } catch (err) {
-      setError(err.response?.data?.error || "L'inscription a échoué. Veuillez réessayer.");
+      setError(
+        err.response?.data?.error ||
+          "L'inscription a échoué. Veuillez réessayer.",
+      );
     }
   };
 
@@ -75,7 +86,14 @@ function Register() {
 
           {/* Error Message */}
           {error && (
-            <p style={{ color: "#ff4d4d", fontSize: "14px", marginBottom: "10px", textAlign: "center" }}>
+            <p
+              style={{
+                color: "#ff4d4d",
+                fontSize: "14px",
+                marginBottom: "10px",
+                textAlign: "center",
+              }}
+            >
               {error}
             </p>
           )}
@@ -95,7 +113,10 @@ function Register() {
             placeholder="Addresse email"
             value={formData.email}
             onChange={handleChange}
-            style={{ borderColor: formData.email && !emailRegex.test(formData.email) ? "red" : "" }}
+            style={{
+              borderColor:
+                formData.email && !emailRegex.test(formData.email) ? "red" : "",
+            }}
             required
           />
 
@@ -114,7 +135,12 @@ function Register() {
             placeholder="Mot de passe (8+ caractères, 1 Maj, 1 Chiffre)"
             value={formData.password}
             onChange={handleChange}
-            style={{ borderColor: formData.password && !passwordRegex.test(formData.password) ? "red" : "" }}
+            style={{
+              borderColor:
+                formData.password && !passwordRegex.test(formData.password)
+                  ? "red"
+                  : "",
+            }}
             required
           />
 

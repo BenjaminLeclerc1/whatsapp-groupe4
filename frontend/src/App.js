@@ -1,7 +1,8 @@
 import { Route, Routes, Navigate } from 'react-router-dom';
 import Login from './components/login/Login';
 import Register from './components/register/Register';
-import Chat from './components/chat/Chat';
+
+import Chats from './components/chats/Chat';
 
 // 🛡️ Helper: If no token, kick them to login
 // 🛡️ Helper: If no token, kick them to login
@@ -18,7 +19,7 @@ const PublicRoute = ({ children }) => {
   const token = localStorage.getItem('token');
   const hasToken = token && token !== "null" && token !== "undefined";
   
-  return hasToken ? <Navigate to="/chat" replace /> : children;
+  return hasToken ? <Navigate to="/chats" replace /> : children;
 };
 
 function App() {
@@ -40,9 +41,9 @@ function App() {
       } />
 
       {/* 3. Chat Page (Protected) */}
-      <Route path="/chat" element={
+      <Route path="/chats" element={
         <ProtectedRoute>
-          <Chat />
+          <Chats />
         </ProtectedRoute>
       } />
 

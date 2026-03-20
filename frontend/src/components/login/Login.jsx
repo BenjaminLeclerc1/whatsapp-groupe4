@@ -3,6 +3,7 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import "../styles/login.css";
 import logo from "../assets/logo.png";
+import api from "../../api/axios";
 
 function Login() {
   const [email, setEmail] = useState("");
@@ -16,7 +17,7 @@ function Login() {
   // Min 8 chars, 1 uppercase, 1 lowercase, 1 number
   const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
 
-const handleLogin = async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
 
@@ -24,9 +25,10 @@ const handleLogin = async (e) => {
 
     try {
       // Ensure this URL is exactly http://localhost:8080/api/v1
-      const apiUrl = process.env.REACT_APP_API_URL_AUTH || "http://localhost:8080/api/v1";
-      
-      const response = await axios.post(`${apiUrl}/users/login`, {
+      const apiUrl =
+        process.env.REACT_APP_API_URL_AUTH || "http://localhost:8081/api/v1";
+
+      const response = await api.post(`${apiUrl}/users/login`, {
         email: email,
         password: password,
       });
@@ -36,18 +38,21 @@ const handleLogin = async (e) => {
       // 🛑 THE FIX:
       // Change from response.data.user.id (which is undefined)
       // To response.data.user_id (which matches your Postman output)
+      // Save to localStorage
       localStorage.setItem("token", response.data.token);
-      localStorage.setItem("userId", response.data.user_id); 
-
-      // 🚀 Using window.location.href is safer than navigate("/") 
+      localStorage.setItem("user_id", response.data.user_id);
+      console.log("Login successful!");
+      // 🚀 Using window.location.href is safer than navigate("/")
       // when you need App.js to refresh and detect the new token
-      window.location.href = "/chat"; 
-
+      window.location.href = "/chat";
     } catch (err) {
       console.error("Login Error:", err);
       // This will now only show if the server actually rejects the request (401)
       // or if the server is down (500/Network Error)
-      setError(err.response?.data?.error || "Connexion échouée. Vérifiez vos identifiants.");
+      setError(
+        err.response?.data?.error ||
+          "Connexion échouée. Vérifiez vos identifiants.",
+      );
     }
   };
 
@@ -67,14 +72,27 @@ const handleLogin = async (e) => {
           <h2>Se connecter à Groupe 4</h2>
 
           {/* Error Message Display */}
-          {error && <p className="error-message" style={{ color: "#ff4d4d", fontSize: "14px", marginBottom: "10px" }}>{error}</p>}
+          {error && (
+            <p
+              className="error-message"
+              style={{
+                color: "#ff4d4d",
+                fontSize: "14px",
+                marginBottom: "10px",
+              }}
+            >
+              {error}
+            </p>
+          )}
 
           <input
             type="email"
             placeholder="Addresse email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            style={{ borderColor: email && !emailRegex.test(email) ? "red" : "" }}
+            style={{
+              borderColor: email && !emailRegex.test(email) ? "red" : "",
+            }}
           />
 
           <input
@@ -82,7 +100,10 @@ const handleLogin = async (e) => {
             placeholder="Mot de passe"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            style={{ borderColor: password && !passwordRegex.test(password) ? "red" : "" }}
+            style={{
+              borderColor:
+                password && !passwordRegex.test(password) ? "red" : "",
+            }}
           />
 
           <button className="login-btn" onClick={handleLogin}>
