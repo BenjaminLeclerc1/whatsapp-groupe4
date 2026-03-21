@@ -65,9 +65,12 @@ func main() {
 		})
 	})
 
-	api := router.Group("/api/v1", middleware.ExtractUserID(), rateLimiter.Middleware())
-	handler.RegisterRoutes(api)
+	// api := router.Group("/api/v1", middleware.ExtractUserID(), rateLimiter.Middleware())
+	// handler.RegisterRoutes(api)
 
+	// In message-service/main.go
+api := router.Group("/api/v1/messages", middleware.ExtractUserID(), rateLimiter.Middleware())
+handler.RegisterRoutes(api)
 	// 5. Graceful Shutdown Setup
 	srv := &http.Server{
 		Addr:           ":" + port,

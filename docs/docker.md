@@ -18,6 +18,24 @@ make deps
 # Compiler tous les services
 make build
 
+# Re run docker 
+wsl --shutdown
+
+
+
+
+# 1. Kill everything and remove orphaned containers
+docker-compose down --remove-orphans
+
+# 2. Build without using ANY cache
+docker-compose build --no-cache api-gateway auth-service chat-service
+
+# 3. Start it up
+docker-compose up
+
+
+
+
 # Lancer chaque service (dans des terminaux séparés)
 make run-gateway
 make run-user
@@ -51,3 +69,13 @@ docker compose up
  docker logs whatsapp-groupe4-user-service-1 | grep -i "redis"
 
  docker logs whatsapp-groupe4-message-service-1 --tail 20
+
+
+
+
+
+ docker-compose down
+
+docker-compose build --no-cache api-gateway auth-service
+
+docker-compose up

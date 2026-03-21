@@ -1,156 +1,288 @@
-// import React, { useState, useEffect, useCallback } from 'react';
-// import axios from 'axios';
-// import '../styles/chat.css';
+
+
+
+// import React, { useState, useEffect, useCallback, useMemo } from "react";
+// import axios from "axios";
+// // import { format } from 'date-fns'; // Recommended for date formatting
+// import "../styles/chat.css";
 
 // const Chats = () => {
 //   const [chats, setChats] = useState([]);
 //   const [selectedChat, setSelectedChat] = useState(null);
 //   const [showModal, setShowModal] = useState(false);
-//   const [newChatData, setNewChatData] = useState({ participants: "", type: "private", name: "" });
 //   const [loading, setLoading] = useState(true);
-//   const [isCreating, setIsCreating] = useState(false); // New state for button loading
+//   const [isCreating, setIsCreating] = useState(false);
 
-//   const apiUrl = process.env.REACT_APP_API_URL_CHAT || 'http://localhost:8080/api/v1';
+//   // Data for New Chat
+//   const [newChatData, setNewChatData] = useState({
+//     participants: "",
+//     type: "private",
+//     name: "",
+//   });
 
-//   const getAuthHeader = () => {
-//     const token = localStorage.getItem('token');
-//     return token ? { Authorization: `Bearer ${token}` } : {};
-//   };
+//   // Updated to match your actual gateway port 8088
+//   const apiUrl = "http://localhost:8080/api/v1";
 
-//   // 1. GET: Fetch chats
+//   const authHeaders = useMemo(() => {
+//     const token = localStorage.getItem("token");
+//     return {
+//       headers: {
+//         Authorization: `Bearer ${token}`,
+//         "Content-Type": "application/json",
+//       },
+//     };
+//   }, []);
+
+//   // 1. Fetch Chats
 //   const fetchChats = useCallback(async () => {
+//     const token = localStorage.getItem("token");
+//     if (!token) return;
+
 //     try {
 //       setLoading(true);
-//       const res = await axios.get(`${apiUrl}/chats`, {
-//         headers: getAuthHeader()
-//       });
+//       const res = await axios.get(`${apiUrl}/chats`, authHeaders);
+//       // Backend returns array of chat objects
 //       setChats(res.data || []);
 //     } catch (err) {
-//       console.error("Erreur lors du chargement:", err);
+//       console.error("Fetch Error:", err.response?.data?.error || err.message);
 //     } finally {
 //       setLoading(false);
 //     }
-//   }, [apiUrl]);
+//   }, [apiUrl, authHeaders]);
 
-//   useEffect(() => { fetchChats(); }, [fetchChats]);
+//   useEffect(() => {
+//     fetchChats();
+//     // OPTIONAL: Set up a polling interval for "semi-real-time" if not using WebSockets
+//     const interval = setInterval(fetchChats, 10000);
+//     return () => clearInterval(interval);
+//   }, [fetchChats]);
 
-//   // 2. POST: Create chat (Optimized for your Postman structure)
+//   // 2. Create Chat
 //   const handleCreateChat = async (e) => {
 //     e.preventDefault();
 //     setIsCreating(true);
 
 //     try {
-//       // Deduplicate participants and remove empty spaces
+//       // Logic to automatically include the CURRENT user's ID if required by backend
+//       const currentUserId = localStorage.getItem("user_id");
+//       const inputIds = newChatData.participants
+//         .split(",")
+//         .map((id) => id.trim());
+
 //       const participantsArray = [
-//         ...new Set(newChatData.participants.split(',').map(id => id.trim()))
-//       ].filter(id => id !== "");
+//         ...new Set([...inputIds, currentUserId]),
+//       ].filter((id) => id && id.length > 5); // Basic UUID length check
 
 //       const payload = {
 //         participants: participantsArray,
 //         type: newChatData.type,
-//         name: newChatData.type === 'group' ? newChatData.name : "Private Chat"
+//         name: newChatData.type === "group" ? newChatData.name : "Private Chat",
 //       };
 
-//       const response = await axios.post(`${apiUrl}/chats`, payload, {
-//         headers: getAuthHeader()
-//       });
+//       const response = await axios.post(
+//         `${apiUrl}/chats`,
+//         payload,
+//         authHeaders,
+//       );
 
-//       // Close modal and reset form
 //       setShowModal(false);
 //       setNewChatData({ participants: "", type: "private", name: "" });
-      
-//       // Refresh list and select the new chat automatically
-//       await fetchChats();
-//       if (response.data && response.data.id) {
-//         setSelectedChat(response.data);
-//       }
 
+//       await fetchChats(); // Refresh list
+//       if (response.data) setSelectedChat(response.data);
 //     } catch (err) {
-//       console.error("Erreur creation chat:", err);
-//       alert("Erreur: " + (err.response?.data?.error || "Impossible de créer le chat"));
+//       alert(
+//         "Erreur de création: " +
+//           (err.response?.data?.error || "Vérifiez les UUIDs"),
+//       );
 //     } finally {
 //       setIsCreating(false);
 //     }
 //   };
 
 //   return (
-//     <div className="whatsapp-main">
-//       <div className="sidebar">
-//         <div className="sidebar-header">
-//           <div className="user-avatar">Me</div>
-//           <div className="header-icons">
-//             <span onClick={() => setShowModal(true)} style={{cursor:'pointer', fontSize: '20px'}}>➕</span>
+//     <div className="whatsapp-layout">
+//       {/* --- SIDEBAR --- */}
+//       <aside className="sidebar">
+//         <header className="sidebar-header">
+//           <div className="profile-img">
+//             <img
+//               src={`https://ui-avatars.com/api/?name=Me&background=random`}
+//               alt="user"
+//             />
+//           </div>
+//           <div className="header-actions">
+//             <button
+//               className="icon-btn"
+//               title="Nouveau Groupe"
+//               onClick={() => setShowModal(true)}
+//             >
+//               <span className="material-icons">add_comment</span>
+//             </button>
+//           </div>
+//         </header>
+
+//         <div className="search-bar">
+//           <div className="search-inner">
+//             <span className="material-icons">search</span>
+//             <input type="text" placeholder="Rechercher une discussion..." />
 //           </div>
 //         </div>
 
 //         <div className="chat-list">
-//           {loading ? (
-//             <p className="loading-msg">Chargement...</p>
+//           {loading && chats.length === 0 ? (
+//             <div className="loader-container">
+//               <div className="loader"></div>
+//             </div>
 //           ) : (
 //             chats.map((chat) => (
-//               <div 
-//                 key={chat.id} 
-//                 className={`chat-item ${selectedChat?.id === chat.id ? 'active' : ''}`}
+//               <div
+//                 key={chat.id}
+//                 className={`chat-card ${selectedChat?.id === chat.id ? "active" : ""}`}
 //                 onClick={() => setSelectedChat(chat)}
 //               >
-//                 <div className="chat-avatar">{chat.type === 'group' ? '👥' : '👤'}</div>
-//                 <div className="chat-info">
-//                   <span className="chat-name">{chat.name || "Discussion"}</span>
-//                   <p className="chat-preview">{chat.participants?.length || 0} participants</p>
+//                 <div className="card-avatar">
+//                   {chat.type === "group" ? "👥" : "👤"}
+//                 </div>
+//                 <div className="card-content">
+//                   <div className="card-top">
+//                     <span className="chat-title">
+//                       {chat.name || "Discussion"}
+//                     </span>
+//                     <span className="chat-time">
+//                       {chat.created_at
+//                         ? new Date(chat.created_at).toLocaleTimeString([], {
+//                             hour: "2-digit",
+//                             minute: "2-digit",
+//                           })
+//                         : ""}
+//                     </span>
+//                   </div>
+//                   <div className="card-bottom">
+//                     <span className="last-msg">
+//                       {chat.participants?.length} membres
+//                     </span>
+//                   </div>
 //                 </div>
 //               </div>
 //             ))
 //           )}
 //         </div>
-//       </div>
+//       </aside>
 
-//       <div className="chat-window">
+//       {/* --- MAIN CHAT --- */}
+//       <main className="chat-container">
 //         {selectedChat ? (
-//           <div className="window-content">
-//             <div className="window-header"><h3>{selectedChat.name}</h3></div>
-//             <div className="message-area">
-//                <p className="system-msg">Discussion sécurisée (ID: {selectedChat.id})</p>
+//           <div className="active-chat">
+//             <header className="chat-header">
+//               <div className="header-info">
+//                 <h3>{selectedChat.name}</h3>
+//                 <p>
+//                   {selectedChat.type} • {selectedChat.participants?.length}{" "}
+//                   participants
+//                 </p>
+//               </div>
+//             </header>
+
+//             <div className="messages-viewport">
+//               <div className="date-divider">Aujourd'hui</div>
+//               <div className="msg-bubble system">
+//                 Discussion créée le{" "}
+//                 {new Date(selectedChat.created_at).toLocaleDateString([], {
+//                   day: "2-digit",
+//                   month: "long",
+//                   year: "numeric",
+//                 })}
+//               </div>
+//               <div className="msg-bubble system">ID: {selectedChat.id}</div>
 //             </div>
-//             <div className="input-area">
-//               <input type="text" placeholder="Taper un message" />
-//               <button className="send-btn">➤</button>
-//             </div>
+
+//             <footer className="chat-footer">
+//               <button className="icon-btn">📎</button>
+//               <input type="text" placeholder="Taper un message..." />
+//               <button className="send-btn">
+//                 <span className="material-icons">send</span>
+//               </button>
+//             </footer>
 //           </div>
 //         ) : (
-//           <div className="empty-state"><h2>Sélectionnez une discussion</h2></div>
+//           <div className="welcome-screen">
+//             <div className="welcome-img">💬</div>
+//             <h2>WhatsApp Groupe 4</h2>
+//             <p>
+//               Sélectionnez une discussion pour commencer à envoyer des messages.
+//             </p>
+//           </div>
 //         )}
-//       </div>
+//       </main>
 
+//       {/* --- MODAL --- */}
 //       {showModal && (
-//         <div className="modal-overlay">
-//           <div className="modal-content">
-//             <h3>Nouvelle Discussion</h3>
+//         <div className="modal-backdrop">
+//           <div className="modal-box">
+//             <div className="modal-header">
+//               <h2>Démarrer une conversation</h2>
+//               <button onClick={() => setShowModal(false)}>✕</button>
+//             </div>
 //             <form onSubmit={handleCreateChat}>
-//               <select value={newChatData.type} onChange={e => setNewChatData({...newChatData, type: e.target.value})}>
-//                 <option value="private">Privé (1-on-1)</option>
-//                 <option value="group">Groupe</option>
-//               </select>
+//               <div className="form-group">
+//                 <label>Type de discussion</label>
+//                 <select
+//                   value={newChatData.type}
+//                   onChange={(e) =>
+//                     setNewChatData({ ...newChatData, type: e.target.value })
+//                   }
+//                 >
+//                   <option value="private">🔒 Privée (1-to-1)</option>
+//                   <option value="group">👥 Groupe</option>
+//                 </select>
+//               </div>
 
-//               <input 
-//                 placeholder="UUIDs des participants (séparés par une virgule)" 
-//                 value={newChatData.participants}
-//                 onChange={e => setNewChatData({...newChatData, participants: e.target.value})}
-//                 required
-//               />
-
-//               {newChatData.type === 'group' && (
-//                 <input 
-//                   placeholder="Nom du groupe" 
-//                   value={newChatData.name}
-//                   onChange={e => setNewChatData({...newChatData, name: e.target.value})}
-//                   required
-//                 />
+//               {newChatData.type === "group" && (
+//                 <div className="form-group">
+//                   <label>Nom du Groupe</label>
+//                   <input
+//                     type="text"
+//                     placeholder="Ex: Projet Architecture"
+//                     value={newChatData.name}
+//                     onChange={(e) =>
+//                       setNewChatData({ ...newChatData, name: e.target.value })
+//                     }
+//                     required
+//                   />
+//                 </div>
 //               )}
 
-//               <div className="modal-buttons">
-//                 <button type="button" onClick={() => setShowModal(false)}>Annuler</button>
-//                 <button type="submit" disabled={isCreating}>
-//                   {isCreating ? "Création..." : "Créer"}
+//               <div className="form-group">
+//                 <label>Participants (UUIDs séparés par des virgules)</label>
+//                 <textarea
+//                   placeholder="e.g. 4e04943b..., 435c1cfd..."
+//                   value={newChatData.participants}
+//                   onChange={(e) =>
+//                     setNewChatData({
+//                       ...newChatData,
+//                       participants: e.target.value,
+//                     })
+//                   }
+//                   required
+//                 />
+//                 <small>Votre propre ID sera automatiquement inclus.</small>
+//               </div>
+
+//               <div className="modal-footer">
+//                 <button
+//                   type="button"
+//                   className="btn-secondary"
+//                   onClick={() => setShowModal(false)}
+//                 >
+//                   Annuler
+//                 </button>
+//                 <button
+//                   type="submit"
+//                   className="btn-primary"
+//                   disabled={isCreating}
+//                 >
+//                   {isCreating ? "Traitement..." : "Lancer"}
 //                 </button>
 //               </div>
 //             </form>
@@ -164,185 +296,319 @@
 // export default Chats;
 
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import axios from 'axios';
-import '../styles/chat.css';
+
+
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import axios from "axios";
+import "../styles/chat.css";
 
 const Chats = () => {
   const [chats, setChats] = useState([]);
   const [selectedChat, setSelectedChat] = useState(null);
   const [showModal, setShowModal] = useState(false);
-  const [newChatData, setNewChatData] = useState({ participants: "", type: "private", name: "" });
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
 
-  // Updated to match your Postman port: 8088
-  const apiUrl = process.env.REACT_APP_API_URL_CHAT || 'http://localhost:8080/api/v1';
-
-  // Memoized Auth Headers
-  const authHeaders = useMemo(() => {
-    const token = localStorage.getItem('token');
-    return {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    };
-  }, []);
-
-  // 1. GET: Fetch chats
-  const fetchChats = useCallback(async () => {
-  const token = localStorage.getItem('token'); 
+  // --- MESSAGES STATES ---
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState("");
+  const messagesEndRef = useRef(null);
   
-  // Safety check: if no token, don't even try the request
-  if (!token) {
-    console.error("No token found in localStorage!");
-    return;
-  }
+  // Get current user info from storage
+  const currentUserId = localStorage.getItem("user_id");
+  console.log("Current User ID:", currentUserId);
 
-  try {
-    setLoading(true);
-    const res = await axios.get(`${apiUrl}/chats`, {
-      headers: {
-        // MUST BE EXACTLY THIS STRING
-        'Authorization': `Bearer ${token}` 
-      }
-    });
-    setChats(res.data || []);
-  } catch (err) {
-    // This will tell us exactly WHY the Go backend said 401
-    console.error("Backend Error Message:", err.response?.data?.error);
+  const [newChatData, setNewChatData] = useState({
+    participants: "",
+    type: "private",
+    name: "",
+  });
+
+  const apiUrl = "http://localhost:8080/api/v1";
+  // const apiUrl1 = "http://localhost:8082/api/v1";
+
+  // --- FIX 1: Robust Auth Headers ---
+  // const authHeaders = useMemo(() => {
+  //   const token = localStorage.getItem("token");
+  //   // Only return headers if token is a real string (not null or "undefined")
+  //   if (!token || token === "undefined") return { headers: {} };
     
-    if (err.response?.status === 401) {
-      // If the token is truly dead, clear it
-      // localStorage.removeItem('token');
-    }
-  } finally {
-    setLoading(false);
-  }
-}, [apiUrl]);
+  //   return {
+  //     headers: {
+  //       Authorization: `Bearer ${token}`,
+  //       "Content-Type": "application/json",
+  //     },
+  //   };
+  // }, []);
 
+const authHeaders = useMemo(() => {
+  const token = localStorage.getItem("token");
+  const userId = localStorage.getItem("user_id");
+
+  const headersObject = {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "X-User-ID": userId
+    },
+  };
+
+  console.log("Auth Headers:", headersObject);
+
+  return headersObject;
+}, []);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  // 1. Fetch Chats
+  const fetchChats = useCallback(async () => {
+    if (!authHeaders.headers.Authorization) return;
+
+    try {
+      const res = await axios.get(`${apiUrl}/chats`, authHeaders);
+      setChats(res.data || []);
+    } catch (err) {
+      console.error("Fetch Error:", err.response?.data?.error || err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [apiUrl, authHeaders]);
+
+  // 2. Fetch Messages for Selected Chat
+  const fetchMessages = useCallback(async (chatId) => {
+    // if (!chatId || !authHeaders.headers.Authorization) return;
+    if (!chatId) return;
+    try {
+      // FIX 2: Check if your backend expects /messages/:chatId or /messages/chat/:chatId
+      // const res = await axios.get(`${apiUrl}/messages/${chatId}`, authHeaders);
+      // Change this line in fetchMessages (React)
+const res = await axios.get(`${apiUrl}/messages/chat/${chatId}`, authHeaders);
+      const data = res.data.messages || res.data || [];
+      setMessages(Array.isArray(data) ? data : []);
+      setTimeout(scrollToBottom, 100);
+    } catch (err) {
+      console.error("Fetch Messages Error:", err.message);
+    }
+  }, [apiUrl, authHeaders]);
 
   useEffect(() => {
     fetchChats();
+    const interval = setInterval(fetchChats, 10000);
+    return () => clearInterval(interval);
   }, [fetchChats]);
 
-  // 2. POST: Create chat
+  useEffect(() => {
+    if (selectedChat) {
+      fetchMessages(selectedChat.id);
+    } else {
+      setMessages([]);
+    }
+  }, [selectedChat, fetchMessages]);
+
+  // 3. Send Message
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!newMessage.trim() || !selectedChat) return;
+
+    const payload = {
+      chat_id: selectedChat.id,
+      content: newMessage,
+    };
+
+    try {
+      // Note: check if endpoint should be /messages or /messages/ (trailing slash)
+      const res = await axios.post(`${apiUrl}/messages`, payload, authHeaders);
+      
+      // FIX 3: Ensure the local UI update has the currentUserId to apply "sent" CSS
+      const sentMsg = res.data.message || res.data;
+      
+      setMessages((prev) => [...prev, {
+        ...sentMsg,
+        sender_id: currentUserId // Force current user ID if backend response is nested
+      }]);
+      
+      setNewMessage("");
+      setTimeout(scrollToBottom, 50);
+    } catch (err) {
+      console.error("Send Error:", err.response?.data?.error || err.message);
+    }
+
+
+  };
+
+  // 4. Create Chat (Logic preserved)
   const handleCreateChat = async (e) => {
     e.preventDefault();
     setIsCreating(true);
 
     try {
-      // Clean input: Split string to Array and remove duplicates/whitespace
-      const participantsArray = [
-        ...new Set(newChatData.participants.split(',').map(id => id.trim()))
-      ].filter(id => id.length > 0);
+      const inputIds = newChatData.participants.split(",").map((id) => id.trim());
+      const participantsArray = [...new Set([...inputIds, currentUserId])].filter((id) => id && id.length > 5);
 
-      // EXACT Payload as seen in your Postman
       const payload = {
         participants: participantsArray,
         type: newChatData.type,
-        name: newChatData.name || "Groupe4"
+        name: newChatData.type === "group" ? newChatData.name : "Private Chat",
       };
 
       const response = await axios.post(`${apiUrl}/chats`, payload, authHeaders);
-
-      // UI Reset
       setShowModal(false);
       setNewChatData({ participants: "", type: "private", name: "" });
-      
-      // Refresh and auto-select new chat
-      await fetchChats();
-      if (response.data?.id) setSelectedChat(response.data);
-
+      await fetchChats(); 
+      if (response.data) setSelectedChat(response.data);
     } catch (err) {
-      alert("Erreur: " + (err.response?.data?.error || "Connexion refusée"));
+      alert("Erreur: " + (err.response?.data?.error || "Vérifiez les UUIDs"));
     } finally {
       setIsCreating(false);
     }
   };
 
   return (
-    <div className="whatsapp-main">
-      {/* Sidebar Section */}
-      <div className="sidebar">
-        <div className="sidebar-header">
-          <div className="user-avatar">Me</div>
-          <div className="header-icons">
-            <span onClick={() => setShowModal(true)} style={{ cursor: 'pointer' }}>➕</span>
+    <div className="whatsapp-layout">
+      {/* SIDEBAR */}
+      <aside className="sidebar">
+        <header className="sidebar-header">
+          <div className="profile-img">
+            <img src={`https://ui-avatars.com/api/?name=Me&background=random`} alt="user" />
+          </div>
+          <div className="header-actions">
+            <button className="icon-btn" onClick={() => setShowModal(true)}>
+              <span className="material-icons">add_comment</span>
+            </button>
+          </div>
+        </header>
+
+        <div className="search-bar">
+          <div className="search-inner">
+            <span className="material-icons">search</span>
+            <input type="text" placeholder="Rechercher..." />
           </div>
         </div>
 
         <div className="chat-list">
-          {loading ? (
-            <p className="loading-msg">Chargement...</p>
+          {loading && chats.length === 0 ? (
+            <div className="loader-container"><div className="loader"></div></div>
           ) : (
             chats.map((chat) => (
-              <div 
-                key={chat.id} 
-                className={`chat-item ${selectedChat?.id === chat.id ? 'active' : ''}`}
+              <div
+                key={chat.id}
+                className={`chat-card ${selectedChat?.id === chat.id ? "active" : ""}`}
                 onClick={() => setSelectedChat(chat)}
               >
-                <div className="chat-avatar">{chat.type === 'group' ? '👥' : '👤'}</div>
-                <div className="chat-info">
-                  <span className="chat-name">{chat.name || "Discussion"}</span>
-                  <p className="chat-preview">{chat.participants?.length || 0} participants</p>
+                <div className="card-avatar">{chat.type === "group" ? "👥" : "👤"}</div>
+                <div className="card-content">
+                  <div className="card-top">
+                    <span className="chat-title">{chat.name || "Discussion"}</span>
+                    <span className="chat-time">
+                      {chat.created_at ? new Date(chat.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
+                    </span>
+                  </div>
+                  <div className="card-bottom">
+                    <span className="last-msg">{chat.participants?.length} membres</span>
+                  </div>
                 </div>
               </div>
             ))
           )}
         </div>
-      </div>
+      </aside>
 
-      {/* Main Chat Window */}
-      <div className="chat-window">
+      {/* MAIN CHAT */}
+      <main className="chat-container">
         {selectedChat ? (
-          <div className="window-content">
-            <div className="window-header"><h3>{selectedChat.name}</h3></div>
-            <div className="message-area">
-               <p className="system-msg">Discussion créée le {new Date(selectedChat.created_at).toLocaleDateString()}</p>
-               <p className="system-msg">ID: {selectedChat.id}</p>
+          <div className="active-chat">
+            <header className="chat-header">
+              <div className="header-info">
+                <h3>{selectedChat.name}</h3>
+                <p>{selectedChat.type} • {selectedChat.participants?.length} participants</p>
+              </div>
+            </header>
+
+            <div className="messages-viewport">
+              <div className="msg-bubble system">
+                Discussion créée le {new Date(selectedChat.created_at).toLocaleDateString()}
+              </div>
+
+              {messages.map((msg) => (
+                <div 
+                  key={msg.id} 
+                  className={`msg-wrapper ${String(msg.sender_id) === String(currentUserId) ? "sent" : "received"}`}
+                >
+                  <div className="msg-bubble">
+                    <div className="msg-text">{msg.content}</div>
+                    <div className="msg-meta">
+                      {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <div ref={messagesEndRef} />
             </div>
-            <div className="input-area">
-              <input type="text" placeholder="Taper un message" />
-              <button className="send-btn">➤</button>
-            </div>
+
+            <form className="chat-footer" onSubmit={handleSendMessage}>
+              <button type="button" className="icon-btn">📎</button>
+              <input 
+                type="text" 
+                placeholder="Taper un message..." 
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+              />
+              <button type="submit" className="send-btn">
+                <span className="material-icons">send</span>
+              </button>
+            </form>
           </div>
         ) : (
-          <div className="empty-state"><h2>Sélectionnez une discussion</h2></div>
+          <div className="welcome-screen">
+            <h2>WhatsApp Groupe 4</h2>
+            <p>Sélectionnez une discussion pour commencer.</p>
+          </div>
         )}
-      </div>
+      </main>
 
-      {/* Create Chat Modal */}
+      {/* MODAL (Preserved) */}
       {showModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h3>Nouvelle Discussion</h3>
+        <div className="modal-backdrop">
+          <div className="modal-box">
+            <div className="modal-header">
+              <h2>Démarrer une conversation</h2>
+              <button onClick={() => setShowModal(false)}>✕</button>
+            </div>
             <form onSubmit={handleCreateChat}>
-              <select value={newChatData.type} onChange={e => setNewChatData({...newChatData, type: e.target.value})}>
-                <option value="private">Privé</option>
-                <option value="group">Groupe</option>
-              </select>
-
-              <input 
-                placeholder="UUIDs des participants (id1, id2...)" 
-                value={newChatData.participants}
-                onChange={e => setNewChatData({...newChatData, participants: e.target.value})}
-                required
-              />
-
-              <input 
-                placeholder="Nom du groupe" 
-                value={newChatData.name}
-                onChange={e => setNewChatData({...newChatData, name: e.target.value})}
-                required
-              />
-
-              <div className="modal-buttons">
+              <div className="form-group">
+                <label>Type</label>
+                <select
+                  value={newChatData.type}
+                  onChange={(e) => setNewChatData({ ...newChatData, type: e.target.value })}
+                >
+                  <option value="private">🔒 Privée</option>
+                  <option value="group">👥 Groupe</option>
+                </select>
+              </div>
+              {newChatData.type === "group" && (
+                <div className="form-group">
+                  <label>Nom du Groupe</label>
+                  <input
+                    type="text"
+                    value={newChatData.name}
+                    onChange={(e) => setNewChatData({ ...newChatData, name: e.target.value })}
+                    required
+                  />
+                </div>
+              )}
+              <div className="form-group">
+                <label>Participants (UUIDs)</label>
+                <textarea
+                  value={newChatData.participants}
+                  onChange={(e) => setNewChatData({ ...newChatData, participants: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="modal-footer">
                 <button type="button" onClick={() => setShowModal(false)}>Annuler</button>
-                <button type="submit" disabled={isCreating}>
-                  {isCreating ? "Création..." : "Créer"}
-                </button>
+                <button type="submit" className="btn-primary" disabled={isCreating}>Lancer</button>
               </div>
             </form>
           </div>
