@@ -49,6 +49,7 @@ function App() {
           {/* 3. Chat Page (Protected) */}
           <Route path="/chats" element={
             <ProtectedRoute>
+              
               <Chats />
             </ProtectedRoute>
           } />
