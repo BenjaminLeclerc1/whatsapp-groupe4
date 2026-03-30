@@ -1,0 +1,10 @@
+services:
+  k6:
+    image: grafana/k6:latest
+    working_dir: /work
+    volumes:
+      - ./:/work
+    # Usage example:
+    # docker compose -f loadtest/docker-compose.k6.yml run --rm k6 run -e BASE_URL=... loadtest/k6/benchmark_10k_health.js
+    entrypoint: ["k6"]
+
