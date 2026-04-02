@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: whatsapp-k6-connections-script
+  namespace: k6-tests
+data:
+  concurrent-connections.js: |
+    import http from 'k6/http';
+    import { check, group, sleep } from 'k6';
+    import { Counter, Rate, Trend } from 'k6/metrics';
+
+    const connexionsReussies = new Counter('connexions_reussies');
+    const connexionsEchouees = new Counter('connexions_echouees');
+    const loginSuccessRate   = new Rate('login_success_rate');
+    const tempsConnexion     = new Trend('temps_connexion_ms', true);
+
+    const BASE_URL = __ENV.BASE_URL || 'http://api-gateway.default.svc.cluster.local:8080';
+
+    export const options = {
+      scenarios: {
+        cent_mille_connexions: {
+          executor: 'constant-vus',
+          vus: 1000,        // 1000 VUs par pod × 100 pods = 100 000 connexions
+          duration: '3m',
+          tags: { test: '100k_simultane' },
+        },
+        montee_progressive: {
+          executor: 'ramping-vus',
+          startVUs: 0,
+          stages: [
+            { duration: '1m', target: 250  },
+            { duration: '1m', target: 500  },
+            { duration: '1m', target: 750  },
+            { duration: '1m', target: 1000 },
+            { duration: '1m', target: 1000 },
+            { duration: '30s', target: 0   },
+          ],
+          startTime: '4m',
+          tags: { test: 'montee_progressive' },
+        },
+      },
+      thresholds: {
+        http_req_failed:    ['rate<0.01'],
+        http_req_duration:  ['p(95)<2000'],
+        login_success_rate: ['rate>0.95'],
+      },
+    };
+
+    export default function () {
+      const email    = `u${__VU}_${__ITER}@test.dev`;
+      const password = 'Test1234!';
+      const username = `u${__VU}_${__ITER}`;
+      let token = null;
+
+      const start  = Date.now();
+      const regRes = http.post(`${BASE_URL}/api/v1/auth/register`,
+        JSON.stringify({ username, email, password }),
+        { headers: { 'Content-Type': 'application/json' } });
+
+      const ok = check(regRes, { 'register: 200/201': (r) => r.status === 200 || r.status === 201 });
+      if (!ok) { connexionsEchouees.add(1); loginSuccessRate.add(false); return; }
+
+      try { token = JSON.parse(regRes.body).access_token; } catch { return; }
+      tempsConnexion.add(Date.now() - start);
+      connexionsReussies.add(1);
+      loginSuccessRate.add(true);
+
+      const sessionEnd = Date.now() + 30000;
+      while (Date.now() < sessionEnd) {
+        http.get(`${BASE_URL}/api/v1/chats`,
+          { headers: { 'Authorization': `Bearer ${token}` } });
+        http.get(`${BASE_URL}/api/v1/health`);
+        sleep(2);
+      }
+
+      http.post(`${BASE_URL}/api/v1/auth/logout`, '{}',
+        { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } });
+    }
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: whatsapp-100k-connections
+  namespace: k6-tests
+spec:
+  # 100 pods × 1 000 VUs/pod = 100 000 connexions simultanées
+  parallelism: 100
+  separate: false
+  script:
+    configMap:
+      name: whatsapp-k6-connections-script
+      file: concurrent-connections.js
+  runner:
+    image: grafana/k6:latest
+    env:
+      - name: BASE_URL
+        # Remplace par l'URL Azure de ton camarade pour tester en cloud
+        value: "http://api-gateway.default.svc.cluster.local:8080"
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+      limits:
+        cpu: "2000m"
+        memory: "2Gi"
