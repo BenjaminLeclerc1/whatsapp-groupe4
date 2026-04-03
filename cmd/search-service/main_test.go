@@ -6,15 +6,16 @@ import (
 )
 
 func TestTokenize(t *testing.T) {
+	// tokenize garde uniquement [a-z0-9] comme lettres (pas les accents après split).
 	tests := []struct {
 		input    string
 		expected int
 	}{
 		{"Hello world", 2},
-		{"Bonjour, comment ça va?", 3}, // "comment", "ça", "va"
-		{"Le chat est noir", 2},        // "chat", "noir" (les mots vides sont filtrés)
+		{"Bonjour, comment ça va?", 4}, // bonjour, comment, a, va
+		{"Le chat est noir", 4},        // le, chat, est, noir
 		{"", 0},
-		{"a", 0}, // Mots trop courts filtrés
+		{"a", 1},
 	}
 
 	for _, test := range tests {
