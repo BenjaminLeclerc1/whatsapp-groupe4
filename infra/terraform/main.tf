@@ -68,7 +68,7 @@ resource "azurerm_postgresql_flexible_server_database" "shard1" {
 }
 
 locals {
-  pg_fqdn      = azurerm_postgresql_flexible_server.pg.fqdn
+  pg_fqdn       = azurerm_postgresql_flexible_server.pg.fqdn
   db_url_shard0 = "postgres://${var.postgres_admin_username}:${var.postgres_admin_password}@${local.pg_fqdn}:5432/${azurerm_postgresql_flexible_server_database.shard0.name}?sslmode=require"
   db_url_shard1 = "postgres://${var.postgres_admin_username}:${var.postgres_admin_password}@${local.pg_fqdn}:5432/${azurerm_postgresql_flexible_server_database.shard1.name}?sslmode=require"
 }
