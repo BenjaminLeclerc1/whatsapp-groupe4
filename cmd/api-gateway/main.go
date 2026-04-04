@@ -37,11 +37,11 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	authServiceURL := getEnv("AUTH_SERVICE_URL", "http://localhost:8086")
+	authServiceURL := getEnv("AUTH_SERVICE_URL", "http://localhost:8084")
 	userServiceURL := getEnv("USER_SERVICE_URL", "http://localhost:8081")
 	chatServiceURL := getEnv("CHAT_SERVICE_URL", "http://localhost:8088")
 	messageServiceURL := getEnv("MESSAGE_SERVICE_URL", "http://localhost:8082")
-	jwtSecret := getEnv("JWT_SECRET", "whatsapp-groupe4-secret-change-in-prod")
+	jwtSecret := requireEnv("JWT_SECRET")
 
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -123,4 +123,12 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func requireEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		log.Fatalf("%s environment variable is required", key)
+	}
+	return v
 }

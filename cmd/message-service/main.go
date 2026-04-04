@@ -16,32 +16,30 @@ import (
 	"github.com/whatsapp-groupe4/internal/middleware"
 
 	"github.com/golang-migrate/migrate/v4"
-    _ "github.com/golang-migrate/migrate/v4/database/postgres"
-    _ "github.com/golang-migrate/migrate/v4/source/file"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
 func main() {
-// 1. Initialize Logger and Config
-    logger.Init("message-service")
-    defer logger.Close()
-    port := getEnv("PORT", "8082")
+	// 1. Initialize Logger and Config
+	logger.Init("message-service")
+	defer logger.Close()
+	port := getEnv("PORT", "8082")
 
-    // --- FIX STARTS HERE ---
-    // Get the URL once at the top of main
-    databaseURL := getEnv("DATABASE_URL", "postgres://whatsapp:whatsapp_secret@localhost:5432/whatsapp_db?sslmode=disable")
+	databaseURL := requireEnv("DATABASE_URL")
 
-    // 2. Initialize Database (Pass the URL into initDB now)
-    pool, err := initDB(databaseURL) 
-    if err != nil {
-        log.Fatalf("database connection failed: %v", err)
-    }
-    defer pool.Close()
+	// 2. Initialize Database (Pass the URL into initDB now)
+	pool, err := initDB(databaseURL)
+	if err != nil {
+		log.Fatalf("database connection failed: %v", err)
+	}
+	defer pool.Close()
 
-    // NEW: Run the migrations (Now databaseURL is defined!)
-    runMigrations(databaseURL)
+	// NEW: Run the migrations (Now databaseURL is defined!)
+	runMigrations(databaseURL)
 	// 3. Setup Router & Middleware
 	router := gin.Default()
-	
+
 	repo := messages.NewRepository(pool)
 	svc := messages.NewService(repo)
 	handler := messages.NewHandler(svc)
@@ -104,37 +102,37 @@ func main() {
 }
 
 func initDB(databaseURL string) (*pgxpool.Pool, error) {
-    // We no longer call getEnv here because we pass databaseURL as an argument
-    config, err := pgxpool.ParseConfig(databaseURL)
-    if err != nil {
-        return nil, err
-    }
+	// We no longer call getEnv here because we pass databaseURL as an argument
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, err
+	}
 
-    // Connection Pool Settings
-    config.MaxConns = 50
-    config.MinConns = 10
-    config.MaxConnLifetime = time.Hour
-    config.MaxConnIdleTime = 30 * time.Minute
-    config.HealthCheckPeriod = 30 * time.Second
+	// Connection Pool Settings
+	config.MaxConns = 50
+	config.MinConns = 10
+	config.MaxConnLifetime = time.Hour
+	config.MaxConnIdleTime = 30 * time.Minute
+	config.HealthCheckPeriod = 30 * time.Second
 
-    // Create a context for the connection attempt
-    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
+	// Create a context for the connection attempt
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-    // Create the connection pool
-    pool, err := pgxpool.NewWithConfig(ctx, config)
-    if err != nil {
-        return nil, err
-    }
+	// Create the connection pool
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		return nil, err
+	}
 
-    // Verify the connection is actually working
-    if err := pool.Ping(ctx); err != nil {
-        pool.Close()
-        return nil, err
-    }
+	// Verify the connection is actually working
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, err
+	}
 
-    log.Printf("PostgreSQL connected (pool: min=%d max=%d)", config.MinConns, config.MaxConns)
-    return pool, nil
+	log.Printf("PostgreSQL connected (pool: min=%d max=%d)", config.MinConns, config.MaxConns)
+	return pool, nil
 }
 
 func getEnv(key, defaultValue string) string {
@@ -144,20 +142,27 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
+func requireEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		logger.Fatal("%s environment variable is required", key)
+	}
+	return v
+}
 
 func runMigrations(databaseURL string) {
-    // We point to the specific subfolder for this service!
-    m, err := migrate.New(
-        "file://migrations/message-service", 
-        databaseURL,
-    )
-    if err != nil {
-        log.Fatalf("Could not create migrate instance: %v", err)
-    }
+	// We point to the specific subfolder for this service!
+	m, err := migrate.New(
+		"file://migrations/message-service",
+		databaseURL,
+	)
+	if err != nil {
+		log.Fatalf("Could not create migrate instance: %v", err)
+	}
 
-    if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-        log.Fatalf("Could not run up migrations: %v", err)
-    }
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		log.Fatalf("Could not run up migrations: %v", err)
+	}
 
-    log.Println("Migrations applied successfully!")
+	log.Println("Migrations applied successfully!")
 }

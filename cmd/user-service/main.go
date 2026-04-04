@@ -38,8 +38,9 @@ type User struct {
 }
 
 type App struct {
-	Shards *sharding.ShardManager
-	Redis  *cache.RedisClient
+	Shards    *sharding.ShardManager
+	Redis     *cache.RedisClient
+	JWTSecret string
 }
 
 var emailRegex = regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`)
@@ -63,28 +64,30 @@ func main() {
 		logger.Fatal("Failed to init shards: %v", err)
 	}
 
-	rdb := cache.NewRedisClient(getEnv("REDIS_ADDR", "whatsapp-redis:6379"))
+	jwtSecret := requireEnv("JWT_SECRET")
+	rdb := cache.NewRedisClient(getEnv("REDIS_ADDR", "redis:6379"))
 
 	app := &App{
-		Shards: shardMgr,
-		Redis:  rdb,
+		Shards:    shardMgr,
+		Redis:     rdb,
+		JWTSecret: jwtSecret,
 	}
 
 	router := gin.Default()
 
 	router.Use(cors.New(cors.Config{
-    AllowOrigins:     []string{"http://localhost:3000"}, // Your React/Vue URL
-    AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-    AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-User-ID"},
-    ExposeHeaders:    []string{"Content-Length"},
-    AllowCredentials: true,
-    MaxAge:           12 * time.Hour,
-}))
+		AllowOrigins:     []string{"http://localhost:3000"}, // Your React/Vue URL
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-User-ID"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
 
-// IMPORTANT: Ensure OPTIONS requests return 200 OK immediately
-router.OPTIONS("/*path", func(c *gin.Context) {
-    c.AbortWithStatus(200)
-})
+	// IMPORTANT: Ensure OPTIONS requests return 200 OK immediately
+	router.OPTIONS("/*path", func(c *gin.Context) {
+		c.AbortWithStatus(200)
+	})
 
 	api := router.Group("/api/v1/users")
 	{
@@ -155,7 +158,11 @@ func (app *App) login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
-	token, _ := auth.GenerateToken(user.ID, user.Role)
+	token, err := auth.GenerateToken(user.ID, user.Role, app.JWTSecret)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not issue token"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"token": token, "user_id": user.ID})
 }
 
@@ -168,7 +175,9 @@ func (app *App) searchUsers(c *gin.Context) {
 	var results []map[string]string
 	for _, shard := range app.Shards.Shards {
 		rows, err := shard.Query(c.Request.Context(), "SELECT id, username FROM users WHERE username ILIKE $1", "%"+queryParam+"%")
-		if err != nil { continue }
+		if err != nil {
+			continue
+		}
 		defer rows.Close()
 		for rows.Next() {
 			var id, username string
@@ -232,12 +241,24 @@ func runMigrations(shardURLs []string) {
 			targetURL += "?x-migrations-table=migrations_users"
 		}
 		m, err := migrate.New("file://migrations/user-service", targetURL)
-		if err != nil { continue }
+		if err != nil {
+			continue
+		}
 		m.Up()
 	}
 }
 
 func getEnv(key, defaultValue string) string {
-	if v := os.Getenv(key); v != "" { return v }
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
 	return defaultValue
+}
+
+func requireEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		logger.Fatal("%s environment variable is required", key)
+	}
+	return v
 }
