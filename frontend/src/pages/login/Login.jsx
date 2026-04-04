@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import "../styles/login.css";
-import logo from "../assets/logo.png";
+import "../../components/styles/login.css";
+import logo from "../../components/assets/logo.png";
 import api from "../../api/axios";
 
 function Login() {

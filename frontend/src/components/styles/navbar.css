@@ -133,3 +133,49 @@
 }
 
 @media (min-width: 769px) { .mobile-menu-icon { display: none; } }
+
+/* --- Styles ajoutés pour le menu Paramètres --- */
+
+.settings-submenu {
+  background-color: #f8f9fa;
+  border-left: 3px solid #00a884;
+  margin: 5px 10px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 4px;
+}
+
+.submenu-item {
+  padding: 10px 15px;
+  font-size: 13px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: #555;
+  transition: background 0.2s;
+}
+
+.submenu-item:hover {
+  background-color: #e9ecef;
+  color: #00a884;
+}
+
+.delete-text {
+  color: #d93025; /* Rouge pour la suppression */
+}
+
+.delete-text:hover {
+  background-color: #fce8e6;
+  color: #d93025;
+}
+
+/* Animation douce pour le menu dropdown */
+.dropdown-menu {
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}

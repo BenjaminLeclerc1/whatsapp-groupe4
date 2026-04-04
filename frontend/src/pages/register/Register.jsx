@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import "../styles/login.css"; // Reuse your existing login CSS
-import logo from "../assets/logo.png";
+import "../../components/styles/login.css"; // Reuse your existing login CSS
+import logo from "../../components/assets/logo.png";
 
 function Register() {
   const [formData, setFormData] = useState({
