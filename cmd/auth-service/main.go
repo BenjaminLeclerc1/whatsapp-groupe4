@@ -92,6 +92,14 @@ func (a *poolAdapter) Begin(ctx context.Context) (txDB, error) {
 }
 func (a *poolAdapter) Ping(ctx context.Context) error { return a.p.Ping(ctx) }
 
+// Fonctions injectables pour les tests — permettent de simuler des erreurs rares
+// (bcrypt avec coût trop élevé, jwt.SignedString qui échoue, rand.Read OS failure).
+var (
+	bcryptGenerate         = bcrypt.GenerateFromPassword
+	generateJWTFn          = generateJWT
+	generateRefreshTokenFn = generateRefreshToken
+)
+
 func main() {
 	logger.Init("auth-service")
 	defer logger.Close()
@@ -232,7 +240,7 @@ func register(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL tim
 		}
 
 		emailNorm := normalizeEmail(input.Email)
-		hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+		hash, err := bcryptGenerate([]byte(input.Password), bcrypt.DefaultCost)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors du chiffrement du mot de passe"})
 			return
@@ -267,13 +275,13 @@ func register(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL tim
 			CreatedAt: now.Format(time.RFC3339),
 		}
 
-		token, err := generateJWT(user.ID, user.Email, jwtSecret, accessTokenTTL)
+		token, err := generateJWTFn(user.ID, user.Email, jwtSecret, accessTokenTTL)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération token"})
 			return
 		}
 
-		refreshToken, refreshHash, err := generateRefreshToken()
+		refreshToken, refreshHash, err := generateRefreshTokenFn()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération refresh token"})
 			return
@@ -338,13 +346,13 @@ func login(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL time.D
 			CreatedAt: createdAt.UTC().Format(time.RFC3339),
 		}
 
-		token, err := generateJWT(user.ID, user.Email, jwtSecret, accessTokenTTL)
+		token, err := generateJWTFn(user.ID, user.Email, jwtSecret, accessTokenTTL)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération token"})
 			return
 		}
 
-		refreshToken, refreshHash, err := generateRefreshToken()
+		refreshToken, refreshHash, err := generateRefreshTokenFn()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération refresh token"})
 			return
@@ -423,7 +431,7 @@ func refresh(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL time
 			return
 		}
 
-		newRefreshToken, newRefreshHash, err3 := generateRefreshToken()
+		newRefreshToken, newRefreshHash, err3 := generateRefreshTokenFn()
 		if err3 != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération refresh token"})
 			return
@@ -453,7 +461,7 @@ func refresh(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL time
 			return
 		}
 
-		accessToken, err7 := generateJWT(userID, email, jwtSecret, accessTokenTTL)
+		accessToken, err7 := generateJWTFn(userID, email, jwtSecret, accessTokenTTL)
 		if err7 != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération token"})
 			return

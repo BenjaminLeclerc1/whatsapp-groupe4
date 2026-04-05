@@ -42,7 +42,15 @@ func TestRequireEnv_Set(t *testing.T) {
 	}
 }
 
-// ─── initDB — couvre le chemin pgxpool.NewWithConfig (URL format valide) ─────
+// ─── initDB ───────────────────────────────────────────────────────────────────
+
+func TestInitDB_InvalidURL(t *testing.T) {
+	// URL invalide → pgxpool.ParseConfig échoue → return nil, err couvert
+	_, err := initDB("not-a-valid-postgres-url")
+	if err == nil {
+		t.Error("expected error for invalid URL")
+	}
+}
 
 func TestInitDB_ValidFormat(t *testing.T) {
 	// ParseConfig réussit (format valide) → pgxpool.NewWithConfig est couvert

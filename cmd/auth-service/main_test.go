@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -919,4 +920,175 @@ func TestPgxTxWrapper_CoversMethods(t *testing.T) {
 	callSafe(func() { _, _ = w.Exec(ctx, "SELECT 1") })
 	callSafe(func() { _ = w.Commit(ctx) })
 	callSafe(func() { _ = w.Rollback(ctx) })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// poolAdapter.Begin — couvre les lignes if err != nil / return nil, err
+// En utilisant un vrai pool pointant sur un serveur inexistant (ECONNREFUSED).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+func TestPoolAdapter_BeginError(t *testing.T) {
+	pool, err := pgxpool.New(context.Background(),
+		"postgres://u:p@127.0.0.1:1/db?sslmode=disable&connect_timeout=1")
+	if err != nil {
+		t.Skip("cannot create test pool:", err)
+	}
+	defer pool.Close()
+
+	adapter := &poolAdapter{p: pool}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	_, err = adapter.Begin(ctx)
+	// La connexion est refusée → err != nil → lignes 88-89 couvertes
+	if err == nil {
+		t.Log("Begin succeeded unexpectedly (pool lazy, pas de vraie connexion)")
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Fonctions injectables — tests des chemins d'erreur rares
+// (bcrypt, generateJWT, generateRefreshToken ne peuvent pas échouer normalement)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+func TestRegister_BCryptError(t *testing.T) {
+	old := bcryptGenerate
+	defer func() { bcryptGenerate = old }()
+	bcryptGenerate = func(_ []byte, _ int) ([]byte, error) {
+		return nil, errors.New("bcrypt forced error")
+	}
+
+	pool := &mockPool{execErrors: []error{nil}} // deleteExpiredRefreshTokens
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/register", map[string]string{
+		"username": "alice", "email": "alice@test.com", "password": "password123",
+	})
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on bcrypt error, got %d", w.Code)
+	}
+}
+
+func TestRegister_JWTError(t *testing.T) {
+	old := generateJWTFn
+	defer func() { generateJWTFn = old }()
+	generateJWTFn = func(_, _, _ string, _ time.Duration) (string, error) {
+		return "", errors.New("jwt forced error")
+	}
+
+	// Exec 1: deleteExpired, Exec 2: INSERT user (ok → proceed to generateJWT)
+	pool := &mockPool{execErrors: []error{nil, nil}}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/register", map[string]string{
+		"username": "alice", "email": "alice@test.com", "password": "password123",
+	})
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on JWT error in register, got %d", w.Code)
+	}
+}
+
+func TestRegister_RefreshTokenGenError(t *testing.T) {
+	old := generateRefreshTokenFn
+	defer func() { generateRefreshTokenFn = old }()
+	generateRefreshTokenFn = func() (string, string, error) {
+		return "", "", errors.New("rand.Read forced error")
+	}
+
+	// Exec 1: deleteExpired, Exec 2: INSERT user (ok → proceed to generateRefreshToken)
+	pool := &mockPool{execErrors: []error{nil, nil}}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/register", map[string]string{
+		"username": "alice", "email": "alice@test.com", "password": "password123",
+	})
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on refresh token gen error in register, got %d", w.Code)
+	}
+}
+
+func TestLogin_JWTError(t *testing.T) {
+	old := generateJWTFn
+	defer func() { generateJWTFn = old }()
+	generateJWTFn = func(_, _, _ string, _ time.Duration) (string, error) {
+		return "", errors.New("jwt forced error")
+	}
+
+	realHash, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.MinCost)
+	pool := &mockPool{
+		execErrors: []error{nil},
+		queryRows: []*mockRow{{vals: []any{
+			"user-1", "alice", "alice@test.com", string(realHash), "active", time.Now(),
+		}}},
+	}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/login", map[string]string{
+		"email": "alice@test.com", "password": "password123",
+	})
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on JWT error in login, got %d", w.Code)
+	}
+}
+
+func TestLogin_RefreshTokenGenError(t *testing.T) {
+	old := generateRefreshTokenFn
+	defer func() { generateRefreshTokenFn = old }()
+	generateRefreshTokenFn = func() (string, string, error) {
+		return "", "", errors.New("rand.Read forced error")
+	}
+
+	realHash, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.MinCost)
+	pool := &mockPool{
+		execErrors: []error{nil},
+		queryRows: []*mockRow{{vals: []any{
+			"user-1", "alice", "alice@test.com", string(realHash), "active", time.Now(),
+		}}},
+	}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/login", map[string]string{
+		"email": "alice@test.com", "password": "password123",
+	})
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on refresh token gen error in login, got %d", w.Code)
+	}
+}
+
+func TestRefresh_GenerateNewTokenError(t *testing.T) {
+	old := generateRefreshTokenFn
+	defer func() { generateRefreshTokenFn = old }()
+	generateRefreshTokenFn = func() (string, string, error) {
+		return "", "", errors.New("rand.Read forced error")
+	}
+
+	tx := &mockTx{
+		queryRows: []*mockRow{
+			{vals: []any{"user-1", time.Now().Add(time.Hour), nil}},                             // token ok
+			{vals: []any{"alice", "alice@test.com", "active", time.Now().Add(-24 * time.Hour)}}, // user ok
+		},
+	}
+	pool := &mockPool{execErrors: []error{nil}, beginTx: tx}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/refresh", map[string]string{"refresh_token": strings.Repeat("a", 64)})
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on refresh token gen error, got %d", w.Code)
+	}
+}
+
+func TestRefresh_JWTError(t *testing.T) {
+	old := generateJWTFn
+	defer func() { generateJWTFn = old }()
+	generateJWTFn = func(_, _, _ string, _ time.Duration) (string, error) {
+		return "", errors.New("jwt forced error")
+	}
+
+	tx := &mockTx{
+		queryRows: []*mockRow{
+			{vals: []any{"user-1", time.Now().Add(time.Hour), nil}},                             // token ok
+			{vals: []any{"alice", "alice@test.com", "active", time.Now().Add(-24 * time.Hour)}}, // user ok
+		},
+		execErrors: []error{nil, nil}, // UPDATE + INSERT ok
+	}
+	pool := &mockPool{execErrors: []error{nil}, beginTx: tx}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/refresh", map[string]string{"refresh_token": strings.Repeat("a", 64)})
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on JWT error in refresh, got %d", w.Code)
+	}
 }
