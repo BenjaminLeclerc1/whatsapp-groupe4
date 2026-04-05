@@ -1,81 +1,9 @@
-// import React, { useState } from "react";
-// import { useApp } from "../../context/AppContext";
-// import "../../components/styles/contacts.css";
-
-// const Contacts = () => {
-//   const { users, loading, deleteUser, updateUser, createChat } = useApp();
-//   const [searchTerm, setSearchTerm] = useState("");
-//   const [openMenuId, setOpenMenuId] = useState(null);
-
-//   const handleStartChat = async (userId) => {
-//     try {
-//       await createChat({ participants: userId, type: "private" });
-//     } catch (err) {
-//       alert("Erreur lors de la création du chat");
-//     }
-//   };
-
-//   const filteredUsers = users.filter(user => 
-//     user.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-//     user.id?.includes(searchTerm)
-//   );
-
-//   return (
-//     <div className="whatsapp-app">
-//       <div className="contacts-container">
-//         <aside className="contacts-sidebar">
-//           <header className="sidebar-header">
-//             <div className="header-title-row">
-//               <span className="material-icons">group</span>
-//               <h2>Tous les utilisateurs</h2>
-//             </div>
-//           </header>
-
-//           <div className="search-container">
-//             <div className="search-input-wrapper">
-//               <span className="material-icons">search</span>
-//               <input 
-//                 type="text" 
-//                 placeholder="Rechercher..." 
-//                 value={searchTerm}
-//                 onChange={(e) => setSearchTerm(e.target.value)}
-//               />
-//             </div>
-//           </div>
-
-//           <div className="chat-list">
-//             {loading ? (
-//               <div className="loader-container"><div className="loader"></div></div>
-//             ) : filteredUsers.map((user) => (
-//               <div key={user.id} className="chat-card contact-item">
-                
-//                 <div className="card-avatar" onClick={() => handleStartChat(user.id)}>
-//                   <img src={`https://ui-avatars.com/api/?name=${user.username}&background=00a884&color=fff`} alt="pfp" />
-//                 </div>
-                
-//                 <div className="card-info" onClick={() => handleStartChat(user.id)}>
-//                   <div className="card-row"><span className="chat-name">{user.username}</span></div>
-//                   <div className="card-row"><span className="user-uuid">ID: {user.id}</span></div>
-//                 </div>
-
-//                 {/* --- REPLACED more_vert WITH ... --- */}
-                
-//               </div>
-//             ))}
-//           </div>
-//         </aside>
-//       </div>
-//     </div>
-//   );
-// };
-
-// export default Contacts;
-
 
 
 import React, { useState } from "react";
 import { useApp } from "../../context/AppContext";
 import "../../components/styles/contacts.css";
+import { useNavigate } from "react-router-dom";
 
 const Contacts = () => {
   const { users, loading, createChat, getUserById } = useApp(); // Ajout de getUserById
@@ -84,12 +12,31 @@ const Contacts = () => {
   // Nouveaux états pour les détails
   const [selectedUser, setSelectedUser] = useState(null);
   const [isDetailsLoading, setIsDetailsLoading] = useState(false);
+  const navigate = useNavigate();
 
-  const handleStartChat = async (userId) => {
+  // const handleStartChat = async (userId) => {
+  //   try {
+  //     await createChat({ participants: userId, type: "private" });
+  //   } catch (err) {
+  //     alert("Erreur lors de la création du chat");
+  //   }
+  // };
+
+  // ... inside your Contacts component ...
+
+const handleStartChat = async (userId) => {
     try {
-      await createChat({ participants: userId, type: "private" });
+      const newChat = await createChat({ participants: [userId], type: "private" });
+      
+      if (newChat) {
+        setSelectedUser(null);
+        // 3. Redirect to your chat route
+        // Replace "/chat" or "/" with your actual chat page path
+        navigate("/chat"); 
+      }
     } catch (err) {
-      alert("Erreur lors de la création du chat");
+      console.error(err);
+      alert("Erreur lors de l'ouverture de la discussion");
     }
   };
 
@@ -108,6 +55,8 @@ const Contacts = () => {
     user.id?.includes(searchTerm)
   );
 
+
+  
   return (
     <div className="whatsapp-app">
       <div className="contacts-container">
