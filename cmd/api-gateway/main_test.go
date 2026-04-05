@@ -241,32 +241,38 @@ func TestAuthMiddleware_ProtectedAndPublicRoutes(t *testing.T) {
 }
 
 // ─── proxyHandler ─────────────────────────────────────────────────────────────
+// Note: on utilise httptest.NewServer (vrai serveur HTTP) car httputil.ReverseProxy
+// appelle CloseNotify() qui n'est pas supporté par httptest.ResponseRecorder.
 
 func TestProxyHandler_ForwardsRequest(t *testing.T) {
-	// Serveur de destination (backend simulé)
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "backend ok")
 	}))
 	defer backend.Close()
 
-	// Construire le router avec le proxyHandler
-	r := gin.New()
-	r.GET("/api/v1/test", proxyHandler(backend.URL))
+	ginRouter := gin.New()
+	ginRouter.GET("/api/v1/test", proxyHandler(backend.URL))
 
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/test", nil)
-	r.ServeHTTP(w, req)
+	// Vrai serveur HTTP pour éviter le panic CloseNotify
+	srv := httptest.NewServer(ginRouter)
+	defer srv.Close()
 
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200 from proxy, got %d", w.Code)
+	resp, err := http.Get(srv.URL + "/api/v1/test")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 from proxy, got %d", resp.StatusCode)
 	}
 }
 
 func TestProxyHandler_WithUserID(t *testing.T) {
-	// Vérifier que X-User-ID est bien transmis au backend
+	receivedUserID := ""
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userID := r.Header.Get("X-User-ID")
-		fmt.Fprintln(w, userID)
+		receivedUserID = r.Header.Get("X-User-ID")
+		fmt.Fprintln(w, "ok")
 	}))
 	defer backend.Close()
 
@@ -277,28 +283,41 @@ func TestProxyHandler_WithUserID(t *testing.T) {
 	protected := router.Group("/api/v1", authMiddleware(secret))
 	protected.GET("/proxy/*path", proxyHandler(backend.URL))
 
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/proxy/test", nil)
-	req.Header.Set("Authorization", "Bearer "+tokenStr)
-	router.ServeHTTP(w, req)
+	srv := httptest.NewServer(router)
+	defer srv.Close()
 
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/proxy/test", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+	if receivedUserID != "user-abc" {
+		t.Errorf("expected X-User-ID='user-abc', got '%s'", receivedUserID)
 	}
 }
 
 func TestProxyHandler_InvalidTarget(t *testing.T) {
-	// Target invalide → proxy retourne une erreur (502 ou autre)
-	r := gin.New()
-	r.GET("/api/v1/bad", proxyHandler("http://localhost:19999"))
+	ginRouter := gin.New()
+	ginRouter.GET("/api/v1/bad", proxyHandler("http://127.0.0.1:19999"))
 
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/bad", nil)
-	r.ServeHTTP(w, req)
+	srv := httptest.NewServer(ginRouter)
+	defer srv.Close()
 
-	// Le proxy échoue à se connecter → erreur 5xx
-	if w.Code < 500 && w.Code != http.StatusBadGateway {
-		t.Logf("proxy to invalid target returned %d (acceptable)", w.Code)
+	resp, err := http.Get(srv.URL + "/api/v1/bad")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Connexion refusée → 502 Bad Gateway
+	if resp.StatusCode < 500 {
+		t.Logf("proxy to invalid target returned %d (acceptable)", resp.StatusCode)
 	}
 }
 
