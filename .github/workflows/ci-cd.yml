@@ -46,7 +46,7 @@ jobs:
           cache-dependency-path: go.sum
 
       - run: go mod download
-      - run: go test ./cmd/... ./internal/... -count=1 -short -coverprofile=coverage.out -covermode=atomic
+      - run: go test ./... -count=1 -short -coverprofile=coverage.out -covermode=atomic
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
