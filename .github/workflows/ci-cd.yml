@@ -22,6 +22,7 @@ on:
       - "feature/**"
       - "fix/**"
       - "chore/**"
+      - "test/**"
   pull_request:
     branches:
       - main
