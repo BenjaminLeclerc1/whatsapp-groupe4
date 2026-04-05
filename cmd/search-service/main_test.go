@@ -430,6 +430,32 @@ func TestGetSearchStats_Empty(t *testing.T) {
 	}
 }
 
+// ─── initDB + requireEnv ─────────────────────────────────────────────────────
+
+func TestSearchInitDB_InvalidURL(t *testing.T) {
+	_, err := initDB("not-a-valid-url")
+	if err == nil {
+		t.Error("expected error for invalid URL")
+	}
+}
+
+func TestSearchInitDB_ValidFormat(t *testing.T) {
+	pool, err := initDB("postgres://user:pass@127.0.0.1:1/db?sslmode=disable")
+	if pool != nil {
+		pool.Close()
+	}
+	_ = err
+}
+
+func TestSearchRequireEnv_Set(t *testing.T) {
+	os.Setenv("SEARCH_REQ_VAR", "present")
+	defer os.Unsetenv("SEARCH_REQ_VAR")
+	result := requireEnv("SEARCH_REQ_VAR")
+	if result != "present" {
+		t.Errorf("expected 'present', got '%s'", result)
+	}
+}
+
 func TestGetSearchStats_AfterIndex(t *testing.T) {
 	clearSearchIndex()
 	mu.Lock()
