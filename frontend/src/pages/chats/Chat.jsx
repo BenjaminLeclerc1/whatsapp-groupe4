@@ -121,7 +121,7 @@ const onRename = (e, chat) => {
               <img src={`https://ui-avatars.com/api/?name=User&background=075E54&color=fff`} alt="me" />
             </div>
             <div className="header-actions">
-              <button className="icon-btn" onClick={() => setShowModal(true)}>
+              <button className="icon-btn" onClick={() => setShowModal(true)} style={{backgroundColor: 'green', padding: '5px 9px', color:'white'}}>
                 <span className="material-icons">+ Nouveau groupe</span>
               </button>
             </div>
@@ -307,24 +307,24 @@ const onRename = (e, chat) => {
             <div className="modal-box">
               <header className="modal-header">
                 <h2>{newChatData.type === "groupe" ? "Nouveau Groupe" : "Nouveau Message"}</h2>
-                <button onClick={() => setShowModal(false)} className="close-modal-btn">
-                   <span className="material-icons">close</span>
+                <button onClick={() => setShowModal(false)} className="close-modal-btn"  style={{backgroundColor: 'green', color: 'white', border: 'none', padding: '5px 9px', marginRight: '4px', cursor:'pointer'}}>
+                   <span className="material-icons">Fermé</span>
                 </button>
               </header>
               <form onSubmit={handleStartChat} className="modal-form">
-                <div className="type-selector">
-                  <button type="button" className={newChatData.type === "private" ? "active" : ""} onClick={() => setNewChatData({ ...newChatData, type: "private" })}>Privé</button>
-                  <button type="button" className={newChatData.type === "groupe" ? "active" : ""} onClick={() => setNewChatData({ ...newChatData, type: "groupe" })}>Groupe</button>
+                <div className="type-selector" style={{marginBottom: '11px'}}>
+                  <button type="button" className={newChatData.type === "private" ? "active" : ""} onClick={() => setNewChatData({ ...newChatData, type: "private" })} style={{backgroundColor: 'green', color: 'white', border: 'none', padding: '5px 9px', marginRight: '4px', cursor:'pointer'}}>Privé</button>
+                  <button type="button" className={newChatData.type === "groupe" ? "active" : ""} onClick={() => setNewChatData({ ...newChatData, type: "groupe" })} style={{backgroundColor: 'green', color: 'white', border: 'none', padding: '5px 9px', marginLeft: '4px', cursor:'pointer'}}>Groupe</button>
                 </div>
                 {newChatData.type === "groupe" && (
                   <div className="form-group">
                     <label>Nom du groupe</label>
-                    <input type="text" value={newChatData.name} onChange={(e) => setNewChatData({ ...newChatData, name: e.target.value })} required />
+                    <input type="text" value={newChatData.name} onChange={(e) => setNewChatData({ ...newChatData, name: e.target.value })} required style={{border: '1px solid gray'}} />
                   </div>
                 )}
                 <div className="form-group">
                   <label>ID des participants (séparés par virgule)</label>
-                  <textarea value={newChatData.participants} onChange={(e) => setNewChatData({ ...newChatData, participants: e.target.value })} required />
+                  <textarea value={newChatData.participants} onChange={(e) => setNewChatData({ ...newChatData, participants: e.target.value })} required style={{border: '1px solid gray'}}/>
                 </div>
                 <button type="submit" className="btn-whatsapp" disabled={isCreating}>LANCER</button>
               </form>
