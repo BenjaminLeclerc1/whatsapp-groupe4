@@ -52,13 +52,22 @@ func main() {
 	// })
 
 	// 3. Service URLs
+	// userServiceURL := getEnv("USER_SERVICE_URL", "http://user-service:8081")
+	// messageServiceURL := getEnv("MESSAGE_SERVICE_URL", "http://message-service:8082")
+	// presenceServiceURL := getEnv("PRESENCE_SERVICE_URL", "http://presence-service:8083")
+	// searchServiceURL := getEnv("SEARCH_SERVICE_URL", "http://search-service:8084")
+	// notificationServiceURL := getEnv("NOTIFICATION_SERVICE_URL", "http://notification-service:8085")
+	// authServiceURL := getEnv("AUTH_SERVICE_URL", "http://auth-service:8084")
+	// channelServiceURL := getEnv("CHANNEL_SERVICE_URL", "http://channel-service:8087")
+	// chatServiceURL := getEnv("CHAT_SERVICE_URL", "http://chat-service:8088")
+	// 3. Service URLs (Mis à jour pour correspondre au Docker Compose)
 	userServiceURL := getEnv("USER_SERVICE_URL", "http://user-service:8081")
 	messageServiceURL := getEnv("MESSAGE_SERVICE_URL", "http://message-service:8082")
-	presenceServiceURL := getEnv("PRESENCE_SERVICE_URL", "http://presence-service:8083")
-	searchServiceURL := getEnv("SEARCH_SERVICE_URL", "http://search-service:8084")
-	notificationServiceURL := getEnv("NOTIFICATION_SERVICE_URL", "http://notification-service:8085")
+	notificationServiceURL := getEnv("NOTIFICATION_SERVICE_URL", "http://notification-service:8083") // Changé 8085 -> 8083
 	authServiceURL := getEnv("AUTH_SERVICE_URL", "http://auth-service:8084")
-	channelServiceURL := getEnv("CHANNEL_SERVICE_URL", "http://channel-service:8087")
+	searchServiceURL := getEnv("SEARCH_SERVICE_URL", "http://search-service:8087") // Aligné sur Docker
+	presenceServiceURL := getEnv("PRESENCE_SERVICE_URL", "http://presence-service:8086")
+	channelServiceURL := getEnv("CHANNEL_SERVICE_URL", "http://channel-service:8085")
 	chatServiceURL := getEnv("CHAT_SERVICE_URL", "http://chat-service:8088")
 
 	jwtSecret := getEnv("JWT_SECRET", "whatsapp-groupe4-secret-default")

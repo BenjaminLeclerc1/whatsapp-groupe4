@@ -65,6 +65,12 @@ func main() {
         
         api.POST("", handler.CreateChat)
         api.POST("/", handler.CreateChat)
+
+
+		// --- NOUVELLES ROUTES ---
+    // Ces routes capturent l'ID après /chats/
+    api.PUT("/:id", handler.UpdateChat)    // Pour modifier (ex: /api/v1/chats/123)
+    api.DELETE("/:id", handler.DeleteChat) // Pour supprimer (ex: /api/v1/chats/123)
     }
     r.Run(":8088")
 }

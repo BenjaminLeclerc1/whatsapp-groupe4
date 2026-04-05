@@ -16,8 +16,9 @@
 /* GLOBAL APP CONTAINER */
 .whatsapp-app {
   background-color: #111b21; /* Dark outer background */
-  height: 100vh;
+  /* height: 100vh; */
   display: flex;
+  padding: 33px;
   align-items: center;
   justify-content: center;
   font-family: Segoe UI, Helvetica Neue, Helvetica, Lucida Grande, Arial, Ubuntu, Cantarell, Fira Sans, sans-serif;
@@ -502,4 +503,60 @@
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+
+.chat-body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column; /* Aligne les éléments en colonne */
+  padding: 20px 7%;
+  /* background-image: url("..."); */
+  background-repeat: repeat;
+  background-attachment: fixed;
+  
+  /* Optionnel : pour que les messages commencent par le bas 
+     si la liste est courte */
+  justify-content: flex-start; 
+}
+
+
+.card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.notification-badge {
+  background-color: #25d366; /* Vert WhatsApp */
+  color: white;
+  border-radius: 50%;
+  min-width: 20px;
+  height: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 11px;
+  font-weight: bold;
+  margin-left: 10px;
+}
+
+
+
+
+/* Style pour les coches WhatsApp */
+.check-mark {
+  vertical-align: bottom;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* La couleur "Read" de WhatsApp est techniquement un bleu-clair #53bdeb */
+.check-mark.read {
+  color: #53bdeb !important;
+}
+
+.check-mark.unread {
+  color: #919191 !important;
 }
