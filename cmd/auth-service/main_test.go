@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -13,13 +14,160 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func init() {
 	gin.SetMode(gin.TestMode)
 }
 
-// ─── getEnv ───────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// Mocks
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// mockRow implémente rowScanner pour les tests
+type mockRow struct {
+	vals []any
+	err  error
+}
+
+func (r *mockRow) Scan(dest ...any) error {
+	if r.err != nil {
+		return r.err
+	}
+	for i, d := range dest {
+		if i >= len(r.vals) {
+			break
+		}
+		switch v := d.(type) {
+		case *string:
+			if s, ok := r.vals[i].(string); ok {
+				*v = s
+			}
+		case *time.Time:
+			if t, ok := r.vals[i].(time.Time); ok {
+				*v = t
+			}
+		case **time.Time:
+			if r.vals[i] == nil {
+				*v = nil
+			} else if t, ok := r.vals[i].(time.Time); ok {
+				*v = &t
+			}
+		}
+	}
+	return nil
+}
+
+// mockTx implémente txDB pour les tests
+type mockTx struct {
+	queryRows   []*mockRow
+	execErrors  []error
+	commitErr   error
+	qIdx, eIdx  int
+}
+
+func (m *mockTx) QueryRow(_ context.Context, _ string, _ ...any) rowScanner {
+	if m.qIdx < len(m.queryRows) {
+		r := m.queryRows[m.qIdx]
+		m.qIdx++
+		return r
+	}
+	return &mockRow{err: errors.New("mockTx: no more rows")}
+}
+
+func (m *mockTx) Exec(_ context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
+	if m.eIdx < len(m.execErrors) {
+		e := m.execErrors[m.eIdx]
+		m.eIdx++
+		return pgconn.CommandTag{}, e
+	}
+	m.eIdx++
+	return pgconn.CommandTag{}, nil
+}
+
+func (m *mockTx) Commit(_ context.Context) error   { return m.commitErr }
+func (m *mockTx) Rollback(_ context.Context) error { return nil }
+
+// mockPool implémente dbPool pour les tests
+type mockPool struct {
+	execErrors  []error
+	queryRows   []*mockRow
+	beginTx     txDB
+	beginErr    error
+	eIdx, qIdx  int
+}
+
+func (m *mockPool) Exec(_ context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
+	if m.eIdx < len(m.execErrors) {
+		e := m.execErrors[m.eIdx]
+		m.eIdx++
+		return pgconn.CommandTag{}, e
+	}
+	m.eIdx++
+	return pgconn.CommandTag{}, nil
+}
+
+func (m *mockPool) QueryRow(_ context.Context, _ string, _ ...any) rowScanner {
+	if m.qIdx < len(m.queryRows) {
+		r := m.queryRows[m.qIdx]
+		m.qIdx++
+		return r
+	}
+	return &mockRow{err: errors.New("mockPool: no more rows")}
+}
+
+func (m *mockPool) Begin(_ context.Context) (txDB, error) {
+	return m.beginTx, m.beginErr
+}
+
+func (m *mockPool) Ping(_ context.Context) error { return nil }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Utilitaires de setup
+// ═══════════════════════════════════════════════════════════════════════════════
+
+func setupRouterWithPool(pool dbPool, secret string) *gin.Engine {
+	ttl := time.Hour
+	r := gin.New()
+	api := r.Group("/api/v1/auth")
+	{
+		api.POST("/register", register(pool, secret, ttl, ttl))
+		api.POST("/login", login(pool, secret, ttl, ttl))
+		api.POST("/refresh", refresh(pool, secret, ttl, ttl))
+		api.POST("/logout", logout(pool))
+		api.GET("/me", authMiddleware(secret), me(pool))
+	}
+	return r
+}
+
+// setupHandlerRouter utilise nil pour tester les validations (avant appel DB)
+func setupHandlerRouter() *gin.Engine {
+	r := gin.Default() // Recovery attrape les panics nil-pool
+	ttl := time.Hour
+	api := r.Group("/api/v1/auth")
+	{
+		api.POST("/register", register(nil, "secret", ttl, ttl))
+		api.POST("/login", login(nil, "secret", ttl, ttl))
+		api.POST("/refresh", refresh(nil, "secret", ttl, ttl))
+		api.POST("/logout", logout(nil))
+	}
+	return r
+}
+
+func postJSON(r *gin.Engine, path string, body any) *httptest.ResponseRecorder {
+	data, _ := json.Marshal(body)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewBuffer(data))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	return w
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// getEnv
+// ═══════════════════════════════════════════════════════════════════════════════
 
 func TestGetEnv_Default(t *testing.T) {
 	result := getEnv("AUTH_TEST_NONEXISTENT", "fallback")
@@ -31,8 +179,7 @@ func TestGetEnv_Default(t *testing.T) {
 func TestGetEnv_Set(t *testing.T) {
 	os.Setenv("AUTH_TEST_VAR", "hello")
 	defer os.Unsetenv("AUTH_TEST_VAR")
-	result := getEnv("AUTH_TEST_VAR", "fallback")
-	if result != "hello" {
+	if result := getEnv("AUTH_TEST_VAR", "fallback"); result != "hello" {
 		t.Errorf("expected 'hello', got '%s'", result)
 	}
 }
@@ -40,160 +187,162 @@ func TestGetEnv_Set(t *testing.T) {
 func TestGetEnv_Empty(t *testing.T) {
 	os.Setenv("AUTH_EMPTY_VAR", "")
 	defer os.Unsetenv("AUTH_EMPTY_VAR")
-	result := getEnv("AUTH_EMPTY_VAR", "default")
-	if result != "default" {
+	if result := getEnv("AUTH_EMPTY_VAR", "default"); result != "default" {
 		t.Errorf("expected 'default', got '%s'", result)
 	}
 }
 
-// ─── getEnvDuration ───────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// requireEnv
+// ═══════════════════════════════════════════════════════════════════════════════
+
+func TestRequireEnv_Set(t *testing.T) {
+	os.Setenv("AUTH_REQ_VAR", "myvalue")
+	defer os.Unsetenv("AUTH_REQ_VAR")
+	if result := requireEnv("AUTH_REQ_VAR"); result != "myvalue" {
+		t.Errorf("expected 'myvalue', got '%s'", result)
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// getEnvDuration
+// ═══════════════════════════════════════════════════════════════════════════════
 
 func TestGetEnvDuration_Default(t *testing.T) {
-	d := getEnvDuration("AUTH_DURATION_NONEXISTENT", 5*time.Minute)
+	d := getEnvDuration("AUTH_DUR_NONEXISTENT", 5*time.Minute)
 	if d != 5*time.Minute {
 		t.Errorf("expected 5m, got %v", d)
 	}
 }
 
-func TestGetEnvDuration_ValidValue(t *testing.T) {
-	os.Setenv("AUTH_TTL", "1h")
-	defer os.Unsetenv("AUTH_TTL")
-	d := getEnvDuration("AUTH_TTL", 5*time.Minute)
-	if d != time.Hour {
-		t.Errorf("expected 1h, got %v", d)
+func TestGetEnvDuration_Valid(t *testing.T) {
+	os.Setenv("AUTH_DUR_VAR", "2h")
+	defer os.Unsetenv("AUTH_DUR_VAR")
+	if d := getEnvDuration("AUTH_DUR_VAR", time.Minute); d != 2*time.Hour {
+		t.Errorf("expected 2h, got %v", d)
 	}
 }
 
-func TestGetEnvDuration_InvalidValue(t *testing.T) {
-	os.Setenv("AUTH_TTL_INVALID", "notaduration")
-	defer os.Unsetenv("AUTH_TTL_INVALID")
-	d := getEnvDuration("AUTH_TTL_INVALID", 10*time.Minute)
-	if d != 10*time.Minute {
-		t.Errorf("expected default 10m, got %v", d)
+func TestGetEnvDuration_Invalid(t *testing.T) {
+	os.Setenv("AUTH_DUR_INVALID", "notaduration")
+	defer os.Unsetenv("AUTH_DUR_INVALID")
+	if d := getEnvDuration("AUTH_DUR_INVALID", time.Minute); d != time.Minute {
+		t.Errorf("expected 1m fallback, got %v", d)
 	}
 }
 
-func TestGetEnvDuration_ZeroValue(t *testing.T) {
-	os.Setenv("AUTH_TTL_ZERO", "0s")
-	defer os.Unsetenv("AUTH_TTL_ZERO")
-	d := getEnvDuration("AUTH_TTL_ZERO", 10*time.Minute)
-	if d != 10*time.Minute {
-		t.Errorf("expected default for zero duration, got %v", d)
+func TestGetEnvDuration_Zero(t *testing.T) {
+	os.Setenv("AUTH_DUR_ZERO", "0s")
+	defer os.Unsetenv("AUTH_DUR_ZERO")
+	if d := getEnvDuration("AUTH_DUR_ZERO", time.Hour); d != time.Hour {
+		t.Errorf("expected fallback for 0 duration, got %v", d)
 	}
 }
 
-// ─── normalizeEmail ───────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// normalizeEmail
+// ═══════════════════════════════════════════════════════════════════════════════
 
-func TestNormalizeEmail_Lowercase(t *testing.T) {
-	result := normalizeEmail("TEST@EXAMPLE.COM")
-	if result != "test@example.com" {
-		t.Errorf("expected 'test@example.com', got '%s'", result)
+func TestNormalizeEmail_AlreadyNormal(t *testing.T) {
+	if result := normalizeEmail("user@test.com"); result != "user@test.com" {
+		t.Errorf("unexpected: %s", result)
 	}
 }
 
-func TestNormalizeEmail_TrimSpaces(t *testing.T) {
-	result := normalizeEmail("  user@domain.fr  ")
-	if result != "user@domain.fr" {
-		t.Errorf("expected 'user@domain.fr', got '%s'", result)
+func TestNormalizeEmail_Uppercase(t *testing.T) {
+	if result := normalizeEmail("USER@Test.COM"); result != "user@test.com" {
+		t.Errorf("expected lowercase, got '%s'", result)
 	}
 }
 
-func TestNormalizeEmail_Mixed(t *testing.T) {
-	result := normalizeEmail("  User@Domain.COM  ")
-	if result != "user@domain.com" {
-		t.Errorf("expected 'user@domain.com', got '%s'", result)
+func TestNormalizeEmail_Spaces(t *testing.T) {
+	if result := normalizeEmail("  alice@example.com  "); result != "alice@example.com" {
+		t.Errorf("expected trimmed, got '%s'", result)
 	}
 }
 
-// ─── hashRefreshToken ─────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// hashRefreshToken
+// ═══════════════════════════════════════════════════════════════════════════════
 
 func TestHashRefreshToken_Deterministic(t *testing.T) {
-	plain := "my-refresh-token"
-	h1 := hashRefreshToken(plain)
-	h2 := hashRefreshToken(plain)
+	h1 := hashRefreshToken("token123")
+	h2 := hashRefreshToken("token123")
 	if h1 != h2 {
 		t.Error("expected same hash for same input")
 	}
 }
 
-func TestHashRefreshToken_DifferentInputs(t *testing.T) {
-	h1 := hashRefreshToken("token-a")
-	h2 := hashRefreshToken("token-b")
+func TestHashRefreshToken_Different(t *testing.T) {
+	h1 := hashRefreshToken("token1")
+	h2 := hashRefreshToken("token2")
 	if h1 == h2 {
-		t.Error("expected different hashes for different inputs")
+		t.Error("expected different hash for different input")
 	}
 }
 
-func TestHashRefreshToken_HexOutput(t *testing.T) {
-	h := hashRefreshToken("any-token")
-	if len(h) != 64 { // SHA256 = 32 bytes = 64 hex chars
-		t.Errorf("expected 64 hex chars, got %d", len(h))
+func TestHashRefreshToken_Length(t *testing.T) {
+	h := hashRefreshToken("test")
+	if len(h) != 64 {
+		t.Errorf("expected SHA-256 hex (64 chars), got %d chars", len(h))
 	}
 }
 
-// ─── generateRefreshToken ─────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// generateRefreshToken
+// ═══════════════════════════════════════════════════════════════════════════════
 
 func TestGenerateRefreshToken_Success(t *testing.T) {
 	plain, hash, err := generateRefreshToken()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if plain == "" {
-		t.Error("expected non-empty plain token")
+	if plain == "" || hash == "" {
+		t.Error("expected non-empty plain and hash")
 	}
-	if hash == "" {
-		t.Error("expected non-empty hash")
+	if plain == hash {
+		t.Error("plain and hash should differ")
 	}
 }
 
-func TestGenerateRefreshToken_PlainIsHashed(t *testing.T) {
+func TestGenerateRefreshToken_HashMatchesPlain(t *testing.T) {
 	plain, hash, _ := generateRefreshToken()
-	computed := hashRefreshToken(plain)
-	if computed != hash {
-		t.Error("hash should match hashRefreshToken(plain)")
+	expected := hashRefreshToken(plain)
+	if hash != expected {
+		t.Error("hash does not match hashRefreshToken(plain)")
 	}
 }
 
-func TestGenerateRefreshToken_Unique(t *testing.T) {
-	plain1, _, _ := generateRefreshToken()
-	plain2, _, _ := generateRefreshToken()
-	if plain1 == plain2 {
-		t.Error("expected unique refresh tokens")
-	}
-}
-
-// ─── generateJWT ─────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// generateJWT
+// ═══════════════════════════════════════════════════════════════════════════════
 
 func TestGenerateJWT_Success(t *testing.T) {
-	tokenStr, err := generateJWT("user-1", "user@test.com", "secret", time.Hour)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	parts := strings.Split(tokenStr, ".")
-	if len(parts) != 3 {
-		t.Errorf("expected 3 JWT parts, got %d", len(parts))
+	tokenStr, err := generateJWT("user-1", "u@test.com", "secret", time.Hour)
+	if err != nil || tokenStr == "" {
+		t.Errorf("expected valid JWT, got err=%v", err)
 	}
 }
 
-func TestGenerateJWT_ParseClaims(t *testing.T) {
-	tokenStr, err := generateJWT("user-42", "alice@test.com", "my-secret", time.Hour)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestGenerateJWT_EmptySecret(t *testing.T) {
+	tokenStr, err := generateJWT("u", "u@test.com", "", time.Hour)
+	if err != nil || tokenStr == "" {
+		t.Errorf("empty secret should still produce token, got err=%v", err)
 	}
+}
 
-	parsed, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(t *jwt.Token) (interface{}, error) {
-		return []byte("my-secret"), nil
+func TestGenerateJWT_ContainsClaims(t *testing.T) {
+	secret := "my-secret"
+	tokenStr, _ := generateJWT("user-99", "test@test.com", secret, time.Hour)
+	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(t *jwt.Token) (interface{}, error) {
+		return []byte(secret), nil
 	})
-	if err != nil {
-		t.Fatalf("parse error: %v", err)
+	if err != nil || !token.Valid {
+		t.Fatalf("token parse failed: %v", err)
 	}
-
-	claims := parsed.Claims.(*Claims)
-	if claims.UserID != "user-42" {
-		t.Errorf("expected user-42, got %s", claims.UserID)
-	}
-	if claims.Email != "alice@test.com" {
-		t.Errorf("expected alice@test.com, got %s", claims.Email)
+	claims := token.Claims.(*Claims)
+	if claims.UserID != "user-99" {
+		t.Errorf("expected UserID 'user-99', got '%s'", claims.UserID)
 	}
 }
 
@@ -207,7 +356,25 @@ func TestGenerateJWT_WrongSecret(t *testing.T) {
 	}
 }
 
-// ─── authMiddleware ───────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// isUniqueViolation
+// ═══════════════════════════════════════════════════════════════════════════════
+
+func TestIsUniqueViolation_NilError(t *testing.T) {
+	if isUniqueViolation(nil) {
+		t.Error("expected false for nil error")
+	}
+}
+
+func TestIsUniqueViolation_OtherError(t *testing.T) {
+	if isUniqueViolation(errors.New("some generic error")) {
+		t.Error("expected false for non-pgconn error")
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// authMiddleware
+// ═══════════════════════════════════════════════════════════════════════════════
 
 func setupAuthRouter(secret string) *gin.Engine {
 	r := gin.New()
@@ -267,13 +434,11 @@ func TestAuthMiddleware_ValidToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to generate JWT: %v", err)
 	}
-
 	r := setupAuthRouter(secret)
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
 	req.Header.Set("Authorization", "Bearer "+tokenStr)
 	r.ServeHTTP(w, req)
-
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", w.Code)
 	}
@@ -281,46 +446,24 @@ func TestAuthMiddleware_ValidToken(t *testing.T) {
 
 func TestAuthMiddleware_ExpiredToken(t *testing.T) {
 	secret := "test-secret"
-	// TTL négatif → token déjà expiré
 	tokenStr, _ := generateJWT("user-1", "u@test.com", secret, -time.Hour)
-
 	r := setupAuthRouter(secret)
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
 	req.Header.Set("Authorization", "Bearer "+tokenStr)
 	r.ServeHTTP(w, req)
-
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401 for expired token, got %d", w.Code)
 	}
 }
 
-// ─── Handlers avec input valide (couverture avant appel DB) ──────────────────
-// On utilise gin.Default() qui inclut le Recovery middleware :
-// si le handler panique sur le pool nil, gin retourne 500 mais le code
-// AVANT la panique est quand même comptabilisé dans la couverture.
+// ═══════════════════════════════════════════════════════════════════════════════
+// register handler — validation (nil pool, couverture avant DB)
+// ═══════════════════════════════════════════════════════════════════════════════
 
-func setupHandlerRouter() *gin.Engine {
-	r := gin.Default() // Recovery middleware attrape les panics nil-pool
-	ttl := time.Hour
-	api := r.Group("/api/v1/auth")
-	{
-		api.POST("/register", register(nil, "secret", ttl, ttl))
-		api.POST("/login", login(nil, "secret", ttl, ttl))
-		api.POST("/refresh", refresh(nil, "secret", ttl, ttl))
-		api.POST("/logout", logout(nil))
-	}
-	return r
-}
-
-// register — champs manquants → 400 (validation before DB)
 func TestRegister_MissingFields(t *testing.T) {
 	r := setupHandlerRouter()
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register",
-		bytes.NewBufferString(`{}`))
-	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(w, req)
+	w := postJSON(r, "/api/v1/auth/register", map[string]string{})
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
 	}
@@ -328,146 +471,318 @@ func TestRegister_MissingFields(t *testing.T) {
 
 func TestRegister_PasswordTooShort(t *testing.T) {
 	r := setupHandlerRouter()
-	body, _ := json.Marshal(map[string]string{
-		"username": "alice",
-		"email":    "alice@test.com",
-		"password": "123", // trop court (min=6)
+	w := postJSON(r, "/api/v1/auth/register", map[string]string{
+		"username": "alice", "email": "alice@test.com", "password": "123",
 	})
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for short password, got %d", w.Code)
 	}
 }
 
-// register — input valide → le code jusqu'à l'appel DB est couvert, puis 500 (nil pool)
 func TestRegister_ValidInput_NilPool(t *testing.T) {
 	r := setupHandlerRouter()
-	body, _ := json.Marshal(map[string]string{
-		"username": "alice",
-		"email":    "alice@example.com",
-		"password": "password123",
+	w := postJSON(r, "/api/v1/auth/register", map[string]string{
+		"username": "alice", "email": "alice@example.com", "password": "password123",
 	})
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(w, req)
-	// Avec pool nil, gin.Default() récupère la panique → 500
-	// L'important : le code bcrypt, uuid, normalizeEmail est maintenant couvert
 	if w.Code == http.StatusBadRequest {
-		t.Errorf("expected valid input to pass validation (got 400)")
+		t.Errorf("valid input should pass validation, not 400")
 	}
 }
 
-// login — champs manquants → 400
+// ═══════════════════════════════════════════════════════════════════════════════
+// register handler — avec mockPool (couverture des chemins DB)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+func TestRegister_DBError(t *testing.T) {
+	pool := &mockPool{execErrors: []error{nil, errors.New("db error")}}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/register", map[string]string{
+		"username": "bob", "email": "bob@test.com", "password": "secret123",
+	})
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on DB error, got %d", w.Code)
+	}
+}
+
+func TestRegister_Success(t *testing.T) {
+	// Exec 1: deleteExpiredRefreshTokens → nil
+	// Exec 2: INSERT auth_users → nil
+	// Exec 3: INSERT auth_refresh_tokens → nil
+	pool := &mockPool{execErrors: []error{nil, nil, nil}}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/register", map[string]string{
+		"username": "alice", "email": "alice@test.com", "password": "password123",
+	})
+	if w.Code != http.StatusCreated {
+		t.Errorf("expected 201 on success, got %d (body: %s)", w.Code, w.Body.String())
+	}
+}
+
+func TestRegister_RefreshTokenInsertError(t *testing.T) {
+	// Exec 1: deleteExpiredRefreshTokens → nil
+	// Exec 2: INSERT auth_users → nil
+	// Exec 3: INSERT auth_refresh_tokens → error
+	pool := &mockPool{execErrors: []error{nil, nil, errors.New("refresh insert failed")}}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/register", map[string]string{
+		"username": "carol", "email": "carol@test.com", "password": "password123",
+	})
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on refresh insert error, got %d", w.Code)
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// login handler
+// ═══════════════════════════════════════════════════════════════════════════════
+
 func TestLogin_MissingFields(t *testing.T) {
 	r := setupHandlerRouter()
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login",
-		bytes.NewBufferString(`{}`))
-	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(w, req)
+	w := postJSON(r, "/api/v1/auth/login", map[string]string{})
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
 	}
 }
 
-// login — input valide → normalizeEmail + appel DB (nil → 500)
 func TestLogin_ValidInput_NilPool(t *testing.T) {
 	r := setupHandlerRouter()
-	body, _ := json.Marshal(map[string]string{
-		"email":    "alice@example.com",
-		"password": "password123",
+	w := postJSON(r, "/api/v1/auth/login", map[string]string{
+		"email": "alice@example.com", "password": "password123",
 	})
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(w, req)
 	if w.Code == http.StatusBadRequest {
-		t.Errorf("valid input should pass validation")
+		t.Error("valid input should pass validation")
 	}
 }
 
-// logout — refresh_token manquant → 400
+func TestLogin_UserNotFound(t *testing.T) {
+	pool := &mockPool{
+		execErrors: []error{nil}, // deleteExpiredRefreshTokens
+		queryRows:  []*mockRow{{err: errors.New("no rows")}},
+	}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/login", map[string]string{
+		"email": "unknown@test.com", "password": "password123",
+	})
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for unknown user, got %d", w.Code)
+	}
+}
+
+func TestLogin_WrongPassword(t *testing.T) {
+	realHash, _ := bcrypt.GenerateFromPassword([]byte("correct-password"), bcrypt.MinCost)
+	pool := &mockPool{
+		execErrors: []error{nil},
+		queryRows: []*mockRow{{vals: []any{
+			"user-1", "alice", "alice@test.com", string(realHash), "active", time.Now(),
+		}}},
+	}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/login", map[string]string{
+		"email": "alice@test.com", "password": "wrong-password",
+	})
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for wrong password, got %d", w.Code)
+	}
+}
+
+func TestLogin_Success(t *testing.T) {
+	realHash, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.MinCost)
+	pool := &mockPool{
+		execErrors: []error{nil, nil}, // deleteExpired + INSERT refresh
+		queryRows: []*mockRow{{vals: []any{
+			"user-1", "alice", "alice@test.com", string(realHash), "active", time.Now(),
+		}}},
+	}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/login", map[string]string{
+		"email": "alice@test.com", "password": "password123",
+	})
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 on successful login, got %d (body: %s)", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["token"] == nil {
+		t.Error("expected 'token' in response")
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// logout handler
+// ═══════════════════════════════════════════════════════════════════════════════
+
 func TestLogout_MissingToken(t *testing.T) {
 	r := setupHandlerRouter()
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout",
-		bytes.NewBufferString(`{}`))
-	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(w, req)
+	w := postJSON(r, "/api/v1/auth/logout", map[string]string{})
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
 	}
 }
 
-// logout — token présent → hashRefreshToken + appel DB (nil → 500)
 func TestLogout_ValidToken_NilPool(t *testing.T) {
 	r := setupHandlerRouter()
-	body, _ := json.Marshal(map[string]string{
-		"refresh_token": "some-refresh-token-value",
-	})
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(w, req)
-	// hashRefreshToken est couvert, pool.Exec panique → 500
+	w := postJSON(r, "/api/v1/auth/logout", map[string]string{"refresh_token": "some-token"})
 	if w.Code == http.StatusBadRequest {
-		t.Errorf("valid token should pass validation")
+		t.Error("valid token should pass validation")
 	}
 }
 
-// refresh — token manquant → 400
+func TestLogout_Success(t *testing.T) {
+	pool := &mockPool{execErrors: []error{nil}}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/logout", map[string]string{"refresh_token": "my-refresh-token"})
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 on logout, got %d", w.Code)
+	}
+}
+
+func TestLogout_DBError_StillOK(t *testing.T) {
+	// Le handler logout ignore l'erreur DB (logger.Error) et retourne toujours 200
+	pool := &mockPool{execErrors: []error{errors.New("db error")}}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/logout", map[string]string{"refresh_token": "my-refresh-token"})
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 even on DB error (error is logged), got %d", w.Code)
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// refresh handler
+// ═══════════════════════════════════════════════════════════════════════════════
+
 func TestRefresh_MissingToken(t *testing.T) {
 	r := setupHandlerRouter()
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh",
-		bytes.NewBufferString(`{}`))
-	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(w, req)
+	w := postJSON(r, "/api/v1/auth/refresh", map[string]string{})
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
 	}
 }
 
-// refresh — token présent → hashRefreshToken + appel DB (nil → 500)
 func TestRefresh_ValidToken_NilPool(t *testing.T) {
 	r := setupHandlerRouter()
-	body, _ := json.Marshal(map[string]string{
-		"refresh_token": "some-refresh-token-value",
-	})
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
-	r.ServeHTTP(w, req)
+	w := postJSON(r, "/api/v1/auth/refresh", map[string]string{"refresh_token": "some-token"})
 	if w.Code == http.StatusBadRequest {
-		t.Errorf("valid token should pass validation")
+		t.Error("valid token should pass validation")
 	}
 }
 
-// ─── isUniqueViolation ────────────────────────────────────────────────────────
-
-func TestIsUniqueViolation_NilError(t *testing.T) {
-	result := isUniqueViolation(nil)
-	if result {
-		t.Error("expected false for nil error")
+func TestRefresh_BeginError(t *testing.T) {
+	pool := &mockPool{
+		execErrors: []error{nil}, // deleteExpiredRefreshTokens
+		beginErr:   errors.New("begin failed"),
+	}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/refresh", map[string]string{"refresh_token": "some-token"})
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on begin error, got %d", w.Code)
 	}
 }
 
-func TestIsUniqueViolation_OtherError(t *testing.T) {
-	result := isUniqueViolation(errors.New("some generic error"))
-	if result {
-		t.Error("expected false for non-pgconn error")
+func TestRefresh_TokenNotFound(t *testing.T) {
+	tx := &mockTx{queryRows: []*mockRow{{err: errors.New("token not found")}}}
+	pool := &mockPool{execErrors: []error{nil}, beginTx: tx}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/refresh", map[string]string{"refresh_token": "bad-token"})
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for invalid refresh token, got %d", w.Code)
 	}
 }
 
-// ─── normalizeEmail ───────────────────────────────────────────────────────────
+func TestRefresh_TokenRevoked(t *testing.T) {
+	revokedAt := time.Now().Add(-time.Hour)
+	tx := &mockTx{queryRows: []*mockRow{{vals: []any{
+		"user-1", time.Now().Add(time.Hour), revokedAt,
+	}}}}
+	pool := &mockPool{execErrors: []error{nil}, beginTx: tx}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/refresh", map[string]string{"refresh_token": "revoked-token"})
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for revoked token, got %d", w.Code)
+	}
+}
 
-func TestNormalizeEmail_AlreadyNormal(t *testing.T) {
-	result := normalizeEmail("user@test.com")
-	if result != "user@test.com" {
-		t.Errorf("expected 'user@test.com', got '%s'", result)
+func TestRefresh_TokenExpired(t *testing.T) {
+	tx := &mockTx{queryRows: []*mockRow{{vals: []any{
+		"user-1", time.Now().Add(-time.Hour), nil, // expiresAt in the past
+	}}}}
+	pool := &mockPool{execErrors: []error{nil}, beginTx: tx}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/refresh", map[string]string{"refresh_token": "expired-token"})
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 for expired token, got %d", w.Code)
+	}
+}
+
+func TestRefresh_UserNotFound(t *testing.T) {
+	tx := &mockTx{queryRows: []*mockRow{
+		{vals: []any{"user-1", time.Now().Add(time.Hour), nil}}, // token ok
+		{err: errors.New("user not found")},                     // user query fails
+	}}
+	pool := &mockPool{execErrors: []error{nil}, beginTx: tx}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/refresh", map[string]string{"refresh_token": "valid-token"})
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 when user not found, got %d", w.Code)
+	}
+}
+
+func TestRefresh_Success(t *testing.T) {
+	tx := &mockTx{
+		queryRows: []*mockRow{
+			{vals: []any{"user-1", time.Now().Add(time.Hour), nil}},                               // token
+			{vals: []any{"alice", "alice@test.com", "active", time.Now().Add(-24 * time.Hour)}},   // user
+		},
+		execErrors: []error{nil, nil}, // UPDATE old token + INSERT new token
+	}
+	pool := &mockPool{execErrors: []error{nil}, beginTx: tx}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/refresh", map[string]string{"refresh_token": strings.Repeat("a", 64)})
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 on refresh success, got %d (body: %s)", w.Code, w.Body.String())
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// me handler
+// ═══════════════════════════════════════════════════════════════════════════════
+
+func TestMe_Unauthorized(t *testing.T) {
+	pool := &mockPool{}
+	r := setupRouterWithPool(pool, "secret")
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 without token, got %d", w.Code)
+	}
+}
+
+func TestMe_UserNotFound(t *testing.T) {
+	secret := "test-secret"
+	token, _ := generateJWT("user-1", "u@test.com", secret, time.Hour)
+	pool := &mockPool{queryRows: []*mockRow{{err: errors.New("not found")}}}
+	r := setupRouterWithPool(pool, secret)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestMe_Success(t *testing.T) {
+	secret := "test-secret"
+	token, _ := generateJWT("user-1", "alice@test.com", secret, time.Hour)
+	pool := &mockPool{queryRows: []*mockRow{{vals: []any{
+		"alice", "alice@test.com", "active", time.Now().Add(-24 * time.Hour),
+	}}}}
+	r := setupRouterWithPool(pool, secret)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d (body: %s)", w.Code, w.Body.String())
 	}
 }

@@ -45,3 +45,12 @@ func TestMigrationURL_ContainsTableName(t *testing.T) {
 		t.Errorf("expected result to contain 'migrations_chats', got: %s", result)
 	}
 }
+
+// ─── initDB — couvre le chemin d'erreur (URL invalide) ───────────────────────
+
+func TestInitDB_InvalidURL(t *testing.T) {
+	_, err := initDB("not-a-valid-postgres-url")
+	if err == nil {
+		t.Error("expected error for invalid DB URL")
+	}
+}

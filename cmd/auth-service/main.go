@@ -18,6 +18,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/whatsapp-groupe4/internal/logger"
@@ -40,6 +41,57 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+// rowScanner abstrait pgx.Row pour permettre les mocks en tests.
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+// txDB abstrait les opérations d'une transaction pgx.
+type txDB interface {
+	QueryRow(ctx context.Context, sql string, args ...any) rowScanner
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
+}
+
+// dbPool abstrait *pgxpool.Pool pour les tests unitaires.
+type dbPool interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) rowScanner
+	Begin(ctx context.Context) (txDB, error)
+	Ping(ctx context.Context) error
+}
+
+// pgxTxWrapper adapte pgx.Tx vers l'interface txDB.
+type pgxTxWrapper struct{ tx pgx.Tx }
+
+func (t *pgxTxWrapper) QueryRow(ctx context.Context, sql string, args ...any) rowScanner {
+	return t.tx.QueryRow(ctx, sql, args...)
+}
+func (t *pgxTxWrapper) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	return t.tx.Exec(ctx, sql, args...)
+}
+func (t *pgxTxWrapper) Commit(ctx context.Context) error   { return t.tx.Commit(ctx) }
+func (t *pgxTxWrapper) Rollback(ctx context.Context) error { return t.tx.Rollback(ctx) }
+
+// poolAdapter adapte *pgxpool.Pool vers l'interface dbPool.
+type poolAdapter struct{ p *pgxpool.Pool }
+
+func (a *poolAdapter) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	return a.p.Exec(ctx, sql, args...)
+}
+func (a *poolAdapter) QueryRow(ctx context.Context, sql string, args ...any) rowScanner {
+	return a.p.QueryRow(ctx, sql, args...)
+}
+func (a *poolAdapter) Begin(ctx context.Context) (txDB, error) {
+	tx, err := a.p.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &pgxTxWrapper{tx: tx}, nil
+}
+func (a *poolAdapter) Ping(ctx context.Context) error { return a.p.Ping(ctx) }
+
 func main() {
 	logger.Init("auth-service")
 	defer logger.Close()
@@ -57,6 +109,8 @@ func main() {
 		log.Fatalf("database connection failed: %v", err)
 	}
 	defer pool.Close()
+
+	db := &poolAdapter{p: pool}
 
 	router := gin.Default()
 
@@ -76,11 +130,11 @@ func main() {
 
 	api := router.Group("/api/v1/auth")
 	{
-		api.POST("/register", register(pool, jwtSecret, accessTokenTTL, refreshTokenTTL))
-		api.POST("/login", login(pool, jwtSecret, accessTokenTTL, refreshTokenTTL))
-		api.POST("/refresh", refresh(pool, jwtSecret, accessTokenTTL, refreshTokenTTL))
-		api.POST("/logout", logout(pool))
-		api.GET("/me", authMiddleware(jwtSecret), me(pool))
+		api.POST("/register", register(db, jwtSecret, accessTokenTTL, refreshTokenTTL))
+		api.POST("/login", login(db, jwtSecret, accessTokenTTL, refreshTokenTTL))
+		api.POST("/refresh", refresh(db, jwtSecret, accessTokenTTL, refreshTokenTTL))
+		api.POST("/logout", logout(db))
+		api.GET("/me", authMiddleware(jwtSecret), me(db))
 	}
 
 	logger.Info("Auth Service démarré sur le port %s", port)
@@ -161,11 +215,11 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pe) && pe.Code == "23505"
 }
 
-func deleteExpiredRefreshTokens(ctx context.Context, pool *pgxpool.Pool) {
+func deleteExpiredRefreshTokens(ctx context.Context, pool dbPool) {
 	_, _ = pool.Exec(ctx, `DELETE FROM auth_refresh_tokens WHERE expires_at < NOW()`)
 }
 
-func register(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenTTL time.Duration) gin.HandlerFunc {
+func register(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input struct {
 			Username string `json:"username" binding:"required"`
@@ -243,7 +297,7 @@ func register(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshToken
 	}
 }
 
-func login(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenTTL time.Duration) gin.HandlerFunc {
+func login(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input struct {
 			Email    string `json:"email" binding:"required"`
@@ -315,7 +369,7 @@ func login(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenTTL
 	}
 }
 
-func refresh(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenTTL time.Duration) gin.HandlerFunc {
+func refresh(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input struct {
 			RefreshToken string `json:"refresh_token" binding:"required"`
@@ -332,8 +386,8 @@ func refresh(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenT
 		defer cancel()
 		deleteExpiredRefreshTokens(ctx, pool)
 
-		tx, err := pool.Begin(ctx)
-		if err != nil {
+		tx, txErr := pool.Begin(ctx)
+		if txErr != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur serveur"})
 			return
 		}
@@ -342,7 +396,7 @@ func refresh(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenT
 		var userID string
 		var expiresAt time.Time
 		var revokedAt *time.Time
-		err = tx.QueryRow(ctx, `
+		err := tx.QueryRow(ctx, `
 			SELECT user_id, expires_at, revoked_at
 			FROM auth_refresh_tokens WHERE token_hash = $1
 			FOR UPDATE
@@ -362,48 +416,45 @@ func refresh(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenT
 
 		var username, email, status string
 		var createdAt time.Time
-		err = tx.QueryRow(ctx, `
+		if err2 := tx.QueryRow(ctx, `
 			SELECT username, email, status, created_at FROM auth_users WHERE id = $1
-		`, userID).Scan(&username, &email, &status, &createdAt)
-		if err != nil {
+		`, userID).Scan(&username, &email, &status, &createdAt); err2 != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Utilisateur introuvable"})
 			return
 		}
 
-		newRefreshToken, newRefreshHash, err := generateRefreshToken()
-		if err != nil {
+		newRefreshToken, newRefreshHash, err3 := generateRefreshToken()
+		if err3 != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération refresh token"})
 			return
 		}
 
-		_, err = tx.Exec(ctx, `
+		if _, err4 := tx.Exec(ctx, `
 			UPDATE auth_refresh_tokens
 			SET revoked_at = $1, replaced_by_hash = $2
 			WHERE token_hash = $3
-		`, now, newRefreshHash, hash)
-		if err != nil {
-			logger.Error("refresh update old token: %v", err)
+		`, now, newRefreshHash, hash); err4 != nil {
+			logger.Error("refresh update old token: %v", err4)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur serveur"})
 			return
 		}
 
-		_, err = tx.Exec(ctx, `
+		if _, err5 := tx.Exec(ctx, `
 			INSERT INTO auth_refresh_tokens (token_hash, user_id, created_at, expires_at)
 			VALUES ($1, $2, $3, $4)
-		`, newRefreshHash, userID, now, now.Add(refreshTokenTTL))
-		if err != nil {
-			logger.Error("refresh insert new token: %v", err)
+		`, newRefreshHash, userID, now, now.Add(refreshTokenTTL)); err5 != nil {
+			logger.Error("refresh insert new token: %v", err5)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur serveur"})
 			return
 		}
 
-		if err := tx.Commit(ctx); err != nil {
+		if err6 := tx.Commit(ctx); err6 != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur serveur"})
 			return
 		}
 
-		accessToken, err := generateJWT(userID, email, jwtSecret, accessTokenTTL)
-		if err != nil {
+		accessToken, err7 := generateJWT(userID, email, jwtSecret, accessTokenTTL)
+		if err7 != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération token"})
 			return
 		}
@@ -415,7 +466,7 @@ func refresh(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenT
 	}
 }
 
-func logout(pool *pgxpool.Pool) gin.HandlerFunc {
+func logout(pool dbPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input struct {
 			RefreshToken string `json:"refresh_token" binding:"required"`
@@ -443,7 +494,7 @@ func logout(pool *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
-func me(pool *pgxpool.Pool) gin.HandlerFunc {
+func me(pool dbPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, _ := c.Get("user_id")
 
