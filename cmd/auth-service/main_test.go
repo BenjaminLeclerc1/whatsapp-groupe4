@@ -614,6 +614,23 @@ func TestLogin_Success(t *testing.T) {
 	}
 }
 
+func TestLogin_RefreshInsertError(t *testing.T) {
+	realHash, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.MinCost)
+	pool := &mockPool{
+		execErrors: []error{nil, errors.New("refresh insert failed")}, // deleteExpired ok, INSERT refresh échoue
+		queryRows: []*mockRow{{vals: []any{
+			"user-1", "alice", "alice@test.com", string(realHash), "active", time.Now(),
+		}}},
+	}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/login", map[string]string{
+		"email": "alice@test.com", "password": "password123",
+	})
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on refresh insert error, got %d (body: %s)", w.Code, w.Body.String())
+	}
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // logout handler
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -746,6 +763,55 @@ func TestRefresh_Success(t *testing.T) {
 	w := postJSON(r, "/api/v1/auth/refresh", map[string]string{"refresh_token": strings.Repeat("a", 64)})
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200 on refresh success, got %d (body: %s)", w.Code, w.Body.String())
+	}
+}
+
+func TestRefresh_UpdateTokenError(t *testing.T) {
+	tx := &mockTx{
+		queryRows: []*mockRow{
+			{vals: []any{"user-1", time.Now().Add(time.Hour), nil}},                             // token ok
+			{vals: []any{"alice", "alice@test.com", "active", time.Now().Add(-24 * time.Hour)}}, // user ok
+		},
+		execErrors: []error{errors.New("update failed")}, // UPDATE old token échoue
+	}
+	pool := &mockPool{execErrors: []error{nil}, beginTx: tx}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/refresh", map[string]string{"refresh_token": strings.Repeat("a", 64)})
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on UPDATE error, got %d", w.Code)
+	}
+}
+
+func TestRefresh_InsertNewTokenError(t *testing.T) {
+	tx := &mockTx{
+		queryRows: []*mockRow{
+			{vals: []any{"user-1", time.Now().Add(time.Hour), nil}},                             // token ok
+			{vals: []any{"alice", "alice@test.com", "active", time.Now().Add(-24 * time.Hour)}}, // user ok
+		},
+		execErrors: []error{nil, errors.New("insert failed")}, // UPDATE ok, INSERT échoue
+	}
+	pool := &mockPool{execErrors: []error{nil}, beginTx: tx}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/refresh", map[string]string{"refresh_token": strings.Repeat("a", 64)})
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on INSERT error, got %d", w.Code)
+	}
+}
+
+func TestRefresh_CommitError(t *testing.T) {
+	tx := &mockTx{
+		queryRows: []*mockRow{
+			{vals: []any{"user-1", time.Now().Add(time.Hour), nil}},                             // token ok
+			{vals: []any{"alice", "alice@test.com", "active", time.Now().Add(-24 * time.Hour)}}, // user ok
+		},
+		execErrors: []error{nil, nil},                // UPDATE + INSERT ok
+		commitErr:  errors.New("commit failed"),      // Commit échoue
+	}
+	pool := &mockPool{execErrors: []error{nil}, beginTx: tx}
+	r := setupRouterWithPool(pool, "secret")
+	w := postJSON(r, "/api/v1/auth/refresh", map[string]string{"refresh_token": strings.Repeat("a", 64)})
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on commit error, got %d", w.Code)
 	}
 }
 
