@@ -12,6 +12,7 @@ import (
 const (
 	testUUID   = "550e8400-e29b-41d4-a716-446655440000"
 	userIDKey  = "X-User-ID"
+	testUser1  = "user-1"
 	missingUserIDErrFmt = "expected 401 for missing %s, got %d"
 )
 
@@ -279,7 +280,7 @@ func TestRateLimiter_AllowsRequests(t *testing.T) {
 	defer rl.Stop()
 
 	for i := 0; i < 5; i++ {
-		if !rl.allow("user-1") {
+		if !rl.allow(testUser1) {
 			t.Errorf("expected request %d to be allowed", i+1)
 		}
 	}
@@ -303,8 +304,8 @@ func TestRateLimiter_DifferentUsers(t *testing.T) {
 	defer rl.Stop()
 
 	// user1 épuise son quota
-	rl.allow("user-1")
-	rl.allow("user-1") // bloqué
+	rl.allow(testUser1)
+	rl.allow(testUser1) // bloqué
 
 	// user2 doit encore être autorisé
 	if !rl.allow("user-2") {

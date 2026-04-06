@@ -394,55 +394,11 @@ func refresh(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL time
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-
-		hash := hashRefreshToken(input.RefreshToken)
-		now := time.Now().UTC()
-
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
-		deleteExpiredRefreshTokens(ctx, pool)
-
-		tx, err := pool.Begin(ctx)
+		accessToken, newRefreshToken, status, msg, err := executeRefresh(ctx, pool, input.RefreshToken, jwtSecret, accessTokenTTL, refreshTokenTTL)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": errServerMessage})
-			return
-		}
-		defer func() { _ = tx.Rollback(ctx) }()
-
-		userID, expiresAt, revokedAt, err := getRefreshTokenState(ctx, tx, hash)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token invalide"})
-			return
-		}
-		if revokedAt != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token révoqué"})
-			return
-		}
-		if !now.Before(expiresAt) {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token expiré"})
-			return
-		}
-
-		email, err := getUserEmailForRefresh(ctx, tx, userID)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Utilisateur introuvable"})
-			return
-		}
-
-		newRefreshToken, newRefreshHash, err := generateRefreshTokenFn()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération refresh token"})
-			return
-		}
-
-		if err := rotateRefreshToken(ctx, tx, now, hash, newRefreshHash, userID, refreshTokenTTL); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": errServerMessage})
-			return
-		}
-
-		accessToken, err := generateJWTFn(userID, email, jwtSecret, accessTokenTTL)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération token"})
+			c.JSON(status, gin.H{"error": msg})
 			return
 		}
 
@@ -451,6 +407,61 @@ func refresh(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL time
 			"refresh_token": newRefreshToken,
 		})
 	}
+}
+
+func executeRefresh(
+	ctx context.Context,
+	pool dbPool,
+	refreshToken, jwtSecret string,
+	accessTokenTTL, refreshTokenTTL time.Duration,
+) (string, string, int, string, error) {
+	hash := hashRefreshToken(refreshToken)
+	now := time.Now().UTC()
+	deleteExpiredRefreshTokens(ctx, pool)
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return "", "", http.StatusInternalServerError, errServerMessage, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	userID, expiresAt, revokedAt, err := getRefreshTokenState(ctx, tx, hash)
+	if err != nil {
+		return "", "", http.StatusUnauthorized, "Refresh token invalide", err
+	}
+	if status, msg, invalid := refreshStateError(now, expiresAt, revokedAt); invalid {
+		return "", "", status, msg, errors.New(msg)
+	}
+
+	email, err := getUserEmailForRefresh(ctx, tx, userID)
+	if err != nil {
+		return "", "", http.StatusUnauthorized, "Utilisateur introuvable", err
+	}
+
+	newRefreshToken, newRefreshHash, err := generateRefreshTokenFn()
+	if err != nil {
+		return "", "", http.StatusInternalServerError, "Erreur génération refresh token", err
+	}
+
+	if err := rotateRefreshToken(ctx, tx, now, hash, newRefreshHash, userID, refreshTokenTTL); err != nil {
+		return "", "", http.StatusInternalServerError, errServerMessage, err
+	}
+
+	accessToken, err := generateJWTFn(userID, email, jwtSecret, accessTokenTTL)
+	if err != nil {
+		return "", "", http.StatusInternalServerError, "Erreur génération token", err
+	}
+	return accessToken, newRefreshToken, http.StatusOK, "", nil
+}
+
+func refreshStateError(now, expiresAt time.Time, revokedAt *time.Time) (int, string, bool) {
+	if revokedAt != nil {
+		return http.StatusUnauthorized, "Refresh token révoqué", true
+	}
+	if !now.Before(expiresAt) {
+		return http.StatusUnauthorized, "Refresh token expiré", true
+	}
+	return http.StatusOK, "", false
 }
 
 func getRefreshTokenState(ctx context.Context, tx txDB, hash string) (string, time.Time, *time.Time, error) {

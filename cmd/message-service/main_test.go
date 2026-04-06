@@ -12,6 +12,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const healthPath = "/health"
+
 type fakeMsgPinger struct {
 	err error
 }
@@ -23,9 +25,9 @@ func (f *fakeMsgPinger) Ping(ctx context.Context) error {
 func TestMessageHealthHandler_Connected(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/health", messageHealthHandler(&fakeMsgPinger{err: nil}))
+	r.GET(healthPath, messageHealthHandler(&fakeMsgPinger{err: nil}))
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/health", nil))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, healthPath, nil))
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
@@ -41,9 +43,9 @@ func TestMessageHealthHandler_Connected(t *testing.T) {
 func TestMessageHealthHandler_Disconnected(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/health", messageHealthHandler(&fakeMsgPinger{err: errors.New("down")}))
+	r.GET(healthPath, messageHealthHandler(&fakeMsgPinger{err: errors.New("down")}))
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/health", nil))
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, healthPath, nil))
 	var body map[string]any
 	_ = json.Unmarshal(w.Body.Bytes(), &body)
 	if body["database"] != "disconnected" {
