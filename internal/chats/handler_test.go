@@ -32,7 +32,7 @@ func (s handlerChatServiceStub) DeleteChat(ctx context.Context, id string) error
 	return s.deleteFn(ctx, id)
 }
 
-func TestCreateChat_Success(t *testing.T) {
+func TestCreateChatHandler_Success(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h := NewHandler(handlerChatServiceStub{
 		createFn: func(_ context.Context, creatorID string, _ CreateChatRequest) (Chat, error) {
