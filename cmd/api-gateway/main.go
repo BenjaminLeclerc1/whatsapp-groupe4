@@ -67,8 +67,6 @@ func newGatewayRouter(jwtSecret string) *gin.Engine {
 		// Public routes
 		api.Any("/auth/*path", proxyHandler(authServiceURL))
 		api.Any("/search/*path", proxyHandler(searchServiceURL))
-		api.POST("/users/register", proxyHandler(userServiceURL))
-		api.POST("/users/login", proxyHandler(userServiceURL))
 		api.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 
 		// Protected routes
@@ -117,6 +115,12 @@ func proxyHandler(targetURL string) gin.HandlerFunc {
 
 func authMiddleware(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Public user endpoints (no JWT required)
+		if c.Request.URL.Path == "/api/v1/users/register" || c.Request.URL.Path == "/api/v1/users/login" {
+			c.Next()
+			return
+		}
+
 		if c.Request.Method == http.MethodOptions {
 			c.Next()
 			return
