@@ -14,10 +14,11 @@ import (
 const (
 	validChannelUUID = "123e4567-e89b-12d3-a456-426614174111"
 
+	channelMembersSuffix  = "/members"
 	channelCollectionPath = "/channels"
 	channelRouteIDByID    = "/channels/:id"
 	channelPathPrefix     = "/channels/"
-	channelRouteMembers   = channelRouteIDByID + "/members"
+	channelRouteMembers   = channelRouteIDByID + channelMembersSuffix
 	channelRouteMsgs      = channelRouteIDByID + "/messages"
 
 	headerContentType    = "Content-Type"
@@ -163,7 +164,7 @@ func TestAddMember_InvalidUserID(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, channelPathPrefix+validChannelUUID+"/members", strings.NewReader(`{"user_id":"not-uuid"}`))
+	req := httptest.NewRequest(http.MethodPost, channelPathPrefix+validChannelUUID+channelMembersSuffix, strings.NewReader(`{"user_id":"not-uuid"}`))
 	req.Header.Set(headerContentType, contentTypeJSON)
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
@@ -192,7 +193,7 @@ func TestListMembers_AndListMessages_Success(t *testing.T) {
 	})
 
 	w1 := httptest.NewRecorder()
-	req1 := httptest.NewRequest(http.MethodGet, channelPathPrefix+validChannelUUID+"/members", nil)
+	req1 := httptest.NewRequest(http.MethodGet, channelPathPrefix+validChannelUUID+channelMembersSuffix, nil)
 	r.ServeHTTP(w1, req1)
 	if w1.Code != http.StatusOK {
 		t.Fatalf(errExpected200Format, w1.Code)
