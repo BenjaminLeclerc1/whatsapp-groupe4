@@ -26,6 +26,8 @@ const (
 	expected400Fmt    = "expected 400, got %d"
 	aliceTestEmail    = "alice@test.com"
 	jwtTestKey        = "unit-test-jwt-key"
+	testPassword      = "UnitP@ssw0rd!2026"
+	testPasswordAlt   = "UnitP@ssw0rd!2026-alt"
 )
 
 func init() {
@@ -228,7 +230,7 @@ func TestLogin_InvalidEmail(t *testing.T) {
 	r := gin.New()
 	r.POST(loginPath, app.login)
 
-	body, _ := json.Marshal(map[string]string{"email": "notvalid", "password": "pass"})
+	body, _ := json.Marshal(map[string]string{"email": "notvalid", "password": testPasswordAlt})
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, loginPath, bytes.NewBuffer(body))
 	req.Header.Set(contentTypeHeader, jsonContentType)
@@ -244,7 +246,7 @@ func TestLogin_InvalidEmailFormat(t *testing.T) {
 	r := gin.New()
 	r.POST(loginPath, app.login)
 
-	body, _ := json.Marshal(map[string]string{"email": "bademail", "password": "password123"})
+	body, _ := json.Marshal(map[string]string{"email": "bademail", "password": testPassword})
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, loginPath, bytes.NewBuffer(body))
 	req.Header.Set(contentTypeHeader, jsonContentType)
@@ -322,7 +324,7 @@ func TestLogin_EmptyShards_NotFound(t *testing.T) {
 	r.POST(loginPath, app.login)
 
 	body, _ := json.Marshal(map[string]string{
-		"email": aliceTestEmail, "password": "password123",
+		"email": aliceTestEmail, "password": testPassword,
 	})
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, loginPath, bytes.NewBuffer(body))
@@ -339,7 +341,7 @@ func TestLogin_InvalidEmailFormat_EmptyShards(t *testing.T) {
 	r := gin.New()
 	r.POST(loginPath, app.login)
 
-	body, _ := json.Marshal(map[string]string{"email": "not-an-email", "password": "pass"})
+	body, _ := json.Marshal(map[string]string{"email": "not-an-email", "password": testPasswordAlt})
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, loginPath, bytes.NewBuffer(body))
 	req.Header.Set(contentTypeHeader, jsonContentType)
@@ -391,7 +393,7 @@ func TestRegister_EmptyShards_CoversPrePanic(t *testing.T) {
 	r.POST(registerPath, app.register)
 
 	body, _ := json.Marshal(map[string]string{
-		"username": "alice", "telephone": "0601020304", "email": aliceTestEmail, "password": "pass",
+		"username": "alice", "telephone": "0601020304", "email": aliceTestEmail, "password": testPasswordAlt,
 	})
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, registerPath, bytes.NewBuffer(body))
@@ -446,7 +448,7 @@ func TestLogin_FakePool_LoopBody(t *testing.T) {
 	r := gin.New()
 	r.POST(loginPath, app.login)
 
-	body, _ := json.Marshal(map[string]string{"email": aliceTestEmail, "password": "pass123"})
+	body, _ := json.Marshal(map[string]string{"email": aliceTestEmail, "password": testPasswordAlt})
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, loginPath, bytes.NewBuffer(body))
 	req.Header.Set(contentTypeHeader, jsonContentType)
@@ -536,7 +538,7 @@ func TestRegister_FakePool_AfterGetShard(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]string{
 		"username": "alice", "telephone": "0601020304",
-		"email": aliceTestEmail, "password": "password123",
+		"email": aliceTestEmail, "password": testPassword,
 	})
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, registerPath, bytes.NewBuffer(body))

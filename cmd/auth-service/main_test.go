@@ -39,6 +39,7 @@ const (
 	testSecret      = "unit-test-jwt-key"
 	testPassword    = "UnitP@ssw0rd!2026"
 	testPasswordAlt = "UnitP@ssw0rd!2026-alt"
+	jwtParseSecret  = "unit-test-jwt-parse-key"
 	testUserEmail   = "user@test.com"
 	testUTestEmail  = "u@test.com"
 	aliceEmail      = "alice@example.com"
@@ -399,7 +400,7 @@ func TestGenerateJWT_EmptySecret(t *testing.T) {
 }
 
 func TestGenerateJWT_ContainsClaims(t *testing.T) {
-	secret := "my-secret"
+	secret := jwtParseSecret
 	tokenStr, _ := generateJWT(userID99, "test@test.com", secret, time.Hour)
 	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(t *jwt.Token) (interface{}, error) {
 		return []byte(secret), nil
