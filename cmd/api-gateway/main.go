@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -8,6 +9,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -18,29 +20,55 @@ import (
 
 type Claims struct {
 	UserID string `json:"user_id"`
-	Email  string `json:"email,omitempty"`
-	Role   string `json:"role,omitempty"`
+	Email  string `json:"email"`
 	jwt.RegisteredClaims
 }
+
+const authBearerPrefix = "Bearer "
 
 func main() {
 	logger.Init("api-gateway")
 	defer logger.Close()
 
-	router := gin.Default()
+	jwtSecret := getEnv("JWT_SECRET", "whatsapp-groupe4-secret-change-in-prod")
+	router := newGatewayRouter(jwtSecret)
+	port := getEnv("API_GATEWAY_PORT", "8080")
 
+	log.Printf("Gateway running on port %s", port)
+	if err := router.Run(":" + port); err != nil {
+		log.Fatalf("gateway run failed: %v", err)
+	}
+}
+
+func newGatewayRouter(jwtSecret string) *gin.Engine {
+	router := gin.Default()
 	router.RedirectTrailingSlash = false
 	router.RedirectFixedPath = false
-
-	config := cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"},
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     corsAllowOrigins(),
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-User-ID"},
+		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
-	}
-	router.Use(cors.New(config))
+	}))
 
+	authServiceURL := getEnv("AUTH_SERVICE_URL", "http://localhost:8086")
+	userServiceURL := getEnv("USER_SERVICE_URL", "http://localhost:8081")
+	chatServiceURL := getEnv("CHAT_SERVICE_URL", "http://localhost:8088")
+	messageServiceURL := getEnv("MESSAGE_SERVICE_URL", "http://localhost:8082")
+	presenceServiceURL := getEnv("PRESENCE_SERVICE_URL", "http://localhost:8083")
+	searchServiceURL := getEnv("SEARCH_SERVICE_URL", "http://localhost:8084")
+	notificationServiceURL := getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8085")
+	channelServiceURL := getEnv("CHANNEL_SERVICE_URL", "http://localhost:8087")
+
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "api-gateway"})
+	})
+
+	api := router.Group("/api/v1")
+	{
+		// Routes publiques (pas de JWT)
 	userServiceURL := getEnv("USER_SERVICE_URL", "http://user-service:8081")
 	messageServiceURL := getEnv("MESSAGE_SERVICE_URL", "http://message-service:8082")
 	notificationServiceURL := getEnv("NOTIFICATION_SERVICE_URL", "http://notification-service:8083")
@@ -65,17 +93,18 @@ func main() {
 	{
 		api.Any("/auth/*path", proxyHandler(authServiceURL))
 		api.Any("/search/*path", proxyHandler(searchServiceURL))
-		api.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok"}) })
+		api.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 
+		// Routes users : register/login publiques, reste protégé via isPublicUserPath()
+		api.Any("/users/*path", authMiddleware(jwtSecret), proxyHandler(userServiceURL))
+
+		// Routes protégées (JWT requis)
 		protected := api.Group("/", authMiddleware(jwtSecret))
 		{
 			protected.Any("/chats", proxyHandler(chatServiceURL))
 			protected.Any("/chats/*path", proxyHandler(chatServiceURL))
-
 			protected.Any("/messages", proxyHandler(messageServiceURL))
 			protected.Any("/messages/*path", proxyHandler(messageServiceURL))
-
-			protected.Any("/users/*path", proxyHandler(userServiceURL))
 			protected.Any("/presence/*path", proxyHandler(presenceServiceURL))
 			protected.Any("/notification/*path", proxyHandler(notificationServiceURL))
 			protected.Any("/channels/*path", proxyHandler(channelServiceURL))
@@ -90,6 +119,13 @@ func main() {
 }
 
 func proxyHandler(targetURL string) gin.HandlerFunc {
+	remote, err := url.Parse(targetURL)
+	if err != nil {
+		return func(c *gin.Context) {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid target URL"})
+		}
+	}
+
 	return func(c *gin.Context) {
 		remote, err := url.Parse(targetURL)
 		if err != nil {
@@ -103,8 +139,11 @@ func proxyHandler(targetURL string) gin.HandlerFunc {
 			req.URL.Scheme = remote.Scheme
 			req.URL.Host = remote.Host
 			req.URL.Path = c.Request.URL.Path
+
 			if userID, exists := c.Get("user_id"); exists {
-				req.Header.Set("X-User-ID", userID.(string))
+				if uid, ok := userID.(string); ok && uid != "" {
+					req.Header.Set("X-User-ID", uid)
+				}
 			}
 		}
 		proxy.ServeHTTP(c.Writer, c.Request)
@@ -157,23 +196,43 @@ func authMiddleware(jwtSecret string) gin.HandlerFunc {
 			return
 		}
 
-		tokenStr := authHeader[7:]
-		token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(t *jwt.Token) (interface{}, error) {
-			return []byte(jwtSecret), nil
-		})
-
-		if err != nil || !token.Valid {
+		claims, err := parseBearerClaims(c.GetHeader("Authorization"), jwtSecret)
+		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			return
 		}
 
-		if claims, ok := token.Claims.(*Claims); ok {
-			c.Set("user_id", claims.UserID)
-			c.Next()
-		} else {
-			c.AbortWithStatus(http.StatusUnauthorized)
-		}
+		c.Set("user_id", claims.UserID)
+		c.Set("email", claims.Email)
+		c.Next()
 	}
+}
+
+func isPublicUserPath(path string) bool {
+	return path == "/api/v1/users/register" || path == "/api/v1/users/login"
+}
+
+func parseBearerClaims(authHeader, jwtSecret string) (*Claims, error) {
+	if authHeader == "" || !strings.HasPrefix(authHeader, authBearerPrefix) || len(authHeader) <= len(authBearerPrefix) {
+		return nil, errors.New("missing bearer token")
+	}
+
+	tokenStr := strings.TrimPrefix(authHeader, authBearerPrefix)
+	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(t *jwt.Token) (interface{}, error) {
+		if t.Method != jwt.SigningMethodHS256 {
+			return nil, errors.New("unexpected signing method")
+		}
+		return []byte(jwtSecret), nil
+	})
+	if err != nil || !token.Valid {
+		return nil, errors.New("invalid token")
+	}
+
+	claims, ok := token.Claims.(*Claims)
+	if !ok {
+		return nil, errors.New("invalid token claims")
+	}
+	return claims, nil
 }
 
 func getEnv(key, defaultValue string) string {
@@ -181,4 +240,27 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func requireEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		log.Fatalf("%s environment variable is required", key)
+	}
+	return v
+}
+
+func corsAllowOrigins() []string {
+	if v := os.Getenv("CORS_ALLOW_ORIGINS"); v != "" {
+		var out []string
+		for _, p := range strings.Split(v, ",") {
+			if s := strings.TrimSpace(p); s != "" {
+				out = append(out, s)
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+	return []string{"http://localhost:3000"}
 }

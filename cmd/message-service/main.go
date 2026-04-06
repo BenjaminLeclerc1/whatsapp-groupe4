@@ -13,23 +13,24 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres" // required for migrate postgres driver registration
+	_ "github.com/golang-migrate/migrate/v4/source/file"       // required for migrate file source registration
 
 	"github.com/whatsapp-groupe4/internal/logger"
 	"github.com/whatsapp-groupe4/internal/messages"
 	"github.com/whatsapp-groupe4/internal/middleware"
 )
 
+type dbPinger interface {
+	Ping(ctx context.Context) error
+}
+
 func main() {
 	logger.Init("message-service")
 	defer logger.Close()
 
 	port := getEnv("PORT", "8082")
-	databaseURL := getEnv(
-		"DATABASE_URL",
-		"postgres://whatsapp:whatsapp_secret@localhost:5432/whatsapp_db?sslmode=disable",
-	)
+	databaseURL := requireEnv("DATABASE_URL")
 
 	runMigrations(databaseURL)
 
@@ -48,21 +49,7 @@ func main() {
 
 	router := gin.Default()
 
-	router.GET("/health", func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
-		defer cancel()
-
-		dbStatus := "connected"
-		if err := pool.Ping(ctx); err != nil {
-			dbStatus = "disconnected"
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"status":   "healthy",
-			"service":  "message-service",
-			"database": dbStatus,
-		})
-	})
+	router.GET("/health", messageHealthHandler(pool))
 
 	api := router.Group("/api/v1/messages")
 	api.Use(middleware.ExtractUserID(), rateLimiter.Middleware())
@@ -155,4 +142,30 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func requireEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		logger.Fatal("%s environment variable is required", key)
+	}
+	return v
+}
+
+func messageHealthHandler(pool dbPinger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+
+		dbStatus := "connected"
+		if err := pool.Ping(ctx); err != nil {
+			dbStatus = "disconnected"
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":   "healthy",
+			"service":  "message-service",
+			"database": dbStatus,
+		})
+	}
 }

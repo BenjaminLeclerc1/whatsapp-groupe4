@@ -33,7 +33,7 @@ FROM golang:1.24-alpine AS builder
 WORKDIR /app
 
 # Install build tools (needed for some Go modules)
-RUN apk add --no-cache git gcc musl-dev ca-certificates
+RUN apk add --no-cache ca-certificates gcc git musl-dev
 
 # Use a reliable Go proxy
 ENV GOPROXY=https://goproxy.io,direct

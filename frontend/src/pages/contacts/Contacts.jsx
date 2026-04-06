@@ -20,9 +20,7 @@ const Contacts = () => {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, []);
   
-  // Nouveaux états pour les détails
   const [selectedUser, setSelectedUser] = useState(null);
-  const [isDetailsLoading, setIsDetailsLoading] = useState(false);
   const navigate = useNavigate();
 
   // const handleStartChat = async (userId) => {
@@ -53,12 +51,10 @@ const handleStartChat = async (userId) => {
 
   // Nouvelle fonction pour voir les détails
   const handleSeeMore = async (userId) => {
-    setIsDetailsLoading(true);
     const data = await getUserById(userId);
     if (data) {
       setSelectedUser(data);
     }
-    setIsDetailsLoading(false);
   };
 
   return (

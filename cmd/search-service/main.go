@@ -12,8 +12,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres" // required for migrate postgres driver registration
+	_ "github.com/golang-migrate/migrate/v4/source/file"       // required for migrate file source registration
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -55,9 +55,20 @@ func main() {
 	// 2. Run Migrations (using unique tracking table)
 	runMigrations(databaseURL)
 
-	router := gin.Default()
+	router := newSearchRouter(pool)
 
-	// Health check with DB status
+	log.Printf("Search Service started on port %s", port)
+	if err := router.Run(":" + port); err != nil {
+		log.Fatalf("Server failed: %v", err)
+	}
+}
+
+type pinger interface {
+	Ping(ctx context.Context) error
+}
+
+func newSearchRouter(pool pinger) *gin.Engine {
+	router := gin.Default()
 	router.GET("/health", func(c *gin.Context) {
 		err := pool.Ping(context.Background())
 		dbStatus := "connected"
@@ -70,8 +81,6 @@ func main() {
 			"database": dbStatus,
 		})
 	})
-
-	// Search Routes
 	api := router.Group("/api/v1/search")
 	{
 		api.GET("/messages", searchMessages)
@@ -81,11 +90,7 @@ func main() {
 		api.DELETE("/index/:messageId", removeFromIndex)
 		api.GET("/stats", getSearchStats)
 	}
-
-	log.Printf("Search Service started on port %s", port)
-	if err := router.Run(":" + port); err != nil {
-		log.Fatalf("Server failed: %v", err)
-	}
+	return router
 }
 
 // --- DATABASE LOGIC ---
@@ -98,9 +103,15 @@ func initDB(databaseURL string) (*pgxpool.Pool, error) {
 	return pgxpool.NewWithConfig(context.Background(), config)
 }
 
+func searchMigrationURL(databaseURL string) string {
+	if !strings.Contains(databaseURL, "?") {
+		return databaseURL + "?x-migrations-table=migrations_search"
+	}
+	return databaseURL + "&x-migrations-table=migrations_search"
+}
+
 func runMigrations(databaseURL string) {
-	// Add unique migration table to avoid collisions on Shard 1
-	targetURL := databaseURL + "&x-migrations-table=migrations_search"
+	targetURL := searchMigrationURL(databaseURL)
 
 	m, err := migrate.New("file://migrations/search-service", targetURL)
 	if err != nil {

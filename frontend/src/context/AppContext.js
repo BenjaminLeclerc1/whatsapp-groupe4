@@ -1,6 +1,7 @@
 
 import React, { createContext, useState, useEffect, useCallback, useMemo, useContext } from "react";
 import axios from "axios";
+import { API_BASE_URL } from "../config";
 
 const AppContext = createContext();
 
@@ -13,7 +14,8 @@ export const AppProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
 
   const currentUserId = localStorage.getItem("user_id");
-  const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:8080/api/v1";
+  const apiUrl = API_BASE_URL;
+  const userApiUrl = API_BASE_URL;
 
   // Memoized Headers
   // const authHeaders = useMemo(() => {
@@ -41,9 +43,8 @@ const authHeaders = useMemo(() => {
       "X-User-ID": userId || "",
     },
   };
-  // On ajoute 'chats' ou une autre variable qui change après login 
-  // pour forcer React à rafraîchir les headers
-}, [chats.length]);
+  // Login / register font un rechargement complet de la page : localStorage est relu au montage.
+}, []);
   // --- USER ACTIONS ---
 
   const fetchAllUsers = useCallback(async () => {
@@ -264,7 +265,7 @@ const createChat = async (newChatData) => {
     if (!chatId) return [];
     setLoading(true);
     try {
-      const res = await axios.get(`${apiUrl}/messages/${chatId}`, authHeaders);
+      const res = await axios.get(`${apiUrl}/messages/chat/${chatId}`, authHeaders);
       const data = res.data.messages || res.data.data || res.data;
       const historyMessages = Array.isArray(data) ? data : [];
       setMessages(historyMessages);
@@ -275,7 +276,7 @@ const createChat = async (newChatData) => {
     } finally {
       setLoading(false);
     }
-  }, [authHeaders]);
+  }, [authHeaders, apiUrl]);
 
   // --- NOTIFICATIONS ---
 

@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import axios from "axios";
+import { API_BASE_URL } from "../../config";
 import { useNavigate } from "react-router-dom";
 import "../../components/styles/login.css";
 import logo from "../../components/assets/logo.png";
@@ -52,15 +53,22 @@ function Register() {
 
     setLoading(true);
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:8080/api/v1";
-      const response = await axios.post(`${apiUrl}/auth/register`, formData);
+      const response = await axios.post(
+        `${API_BASE_URL}/auth/register`,
+        formData,
+      );
 
-      localStorage.setItem("token", response.data.token);
-      const userId = response.data.user_id || response.data.user?.id;
+      // auth-service renvoie { user: { id, ... }, token, refresh_token }
+      const token = response.data.token;
+      const userId = response.data.user?.id;
+      if (token) localStorage.setItem("token", token);
       if (userId) localStorage.setItem("user_id", userId);
-      localStorage.setItem("username", formData.username);
+      localStorage.setItem("user", JSON.stringify(response.data.user || response.data));
 
-      window.location.href = "/chats";
+      console.log("Registration successful!");
+
+      window.location.href = token ? "/chats" : "/login";
+      // navigate("/chat");
     } catch (err) {
       setError(err.response?.data?.error || "L'inscription a échoué. Veuillez réessayer.");
     } finally {

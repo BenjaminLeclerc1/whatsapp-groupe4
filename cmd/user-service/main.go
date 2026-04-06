@@ -12,8 +12,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres" // required for migrate postgres driver registration
+	_ "github.com/golang-migrate/migrate/v4/source/file"       // required for migrate file source registration
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
@@ -72,19 +72,7 @@ func main() {
 		JWTSecret: jwtSecret,
 	}
 
-	router := gin.Default()
-
-	api := router.Group("/api/v1/users")
-	{
-		api.POST("/register", app.register)
-		api.POST("/login", app.login)
-		api.POST("/logout", app.logout)
-		api.GET("/search", app.searchUsers)
-		api.GET("/:id", app.getUserByID)
-		api.PUT("/:id", app.updateUser)
-		api.DELETE("/:id", app.deleteUser)
-		api.GET("", app.getAllUsers)
-	}
+	router := newUserRouter(app)
 
 	port := getEnv("PORT", "8081")
 	logger.Info("User Service started on port %s", port)
@@ -246,4 +234,28 @@ func requireEnv(key string) string {
 		logger.Fatal("%s environment variable is required", key)
 	}
 	return v
+}
+
+func newUserRouter(app *App) *gin.Engine {
+	router := gin.Default()
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-User-ID"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
+	router.OPTIONS("/*path", func(c *gin.Context) { c.AbortWithStatus(http.StatusOK) })
+
+	api := router.Group("/api/v1/users")
+	api.POST("/register", app.register)
+	api.POST("/login", app.login)
+	api.POST("/logout", app.logout)
+	api.GET("/search", app.searchUsers)
+	api.GET("/:id", app.getUserByID)
+	api.PUT("/:id", app.updateUser)
+	api.DELETE("/:id", app.deleteUser)
+	api.GET("", app.getAllUsers)
+	return router
 }

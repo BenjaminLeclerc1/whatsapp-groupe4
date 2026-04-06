@@ -29,13 +29,18 @@ function Login() {
 
     setLoading(true);
     try {
-      const response = await api.post("/auth/login", { email, password });
+      const response = await api.post("/auth/login", {
+        email: email,
+        password: password,
+      });
+
+      console.log("Response from server:", response.data); // Log this to be 100% sure
 
       localStorage.setItem("token", response.data.token);
-      localStorage.setItem("user_id", response.data.user_id);
-      if (response.data.username) {
-        localStorage.setItem("username", response.data.username);
-      }
+      localStorage.setItem("user_id", response.data.user?.id || response.data.user_id || "");
+      console.log("Login successful!");
+      // 🚀 Using window.location.href is safer than navigate("/")
+      // when you need App.js to refresh and detect the new token
       window.location.href = "/chats";
     } catch (err) {
       setError(err.response?.data?.error || "Connexion échouée. Vérifiez vos identifiants.");

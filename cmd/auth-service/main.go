@@ -15,9 +15,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres" // migrate driver registration
+	_ "github.com/golang-migrate/migrate/v4/source/file"       // migrate file source registration
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/whatsapp-groupe4/internal/logger"
@@ -38,6 +39,71 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+// rowScanner abstrait pgx.Row pour permettre les mocks en tests.
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+// txDB abstrait les opérations d'une transaction pgx.
+type txDB interface {
+	QueryRow(ctx context.Context, sql string, args ...any) rowScanner
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
+}
+
+// dbPool abstrait *pgxpool.Pool pour les tests unitaires.
+type dbPool interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) rowScanner
+	Begin(ctx context.Context) (txDB, error)
+	Ping(ctx context.Context) error
+}
+
+// pgxTxWrapper adapte pgx.Tx vers l'interface txDB.
+type pgxTxWrapper struct{ tx pgx.Tx }
+
+func (t *pgxTxWrapper) QueryRow(ctx context.Context, sql string, args ...any) rowScanner {
+	return t.tx.QueryRow(ctx, sql, args...)
+}
+func (t *pgxTxWrapper) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	return t.tx.Exec(ctx, sql, args...)
+}
+func (t *pgxTxWrapper) Commit(ctx context.Context) error   { return t.tx.Commit(ctx) }
+func (t *pgxTxWrapper) Rollback(ctx context.Context) error { return t.tx.Rollback(ctx) }
+
+// poolAdapter adapte *pgxpool.Pool vers l'interface dbPool.
+type poolAdapter struct{ p *pgxpool.Pool }
+
+func (a *poolAdapter) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	return a.p.Exec(ctx, sql, args...)
+}
+func (a *poolAdapter) QueryRow(ctx context.Context, sql string, args ...any) rowScanner {
+	return a.p.QueryRow(ctx, sql, args...)
+}
+func (a *poolAdapter) Begin(ctx context.Context) (txDB, error) {
+	tx, err := a.p.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &pgxTxWrapper{tx: tx}, nil
+}
+func (a *poolAdapter) Ping(ctx context.Context) error { return a.p.Ping(ctx) }
+
+// Fonctions injectables pour les tests — permettent de simuler des erreurs rares
+// (bcrypt avec coût trop élevé, jwt.SignedString qui échoue, rand.Read OS failure).
+var (
+	bcryptGenerate         = bcrypt.GenerateFromPassword
+	generateJWTFn          = generateJWT
+	generateRefreshTokenFn = generateRefreshToken
+)
+
+const (
+	errServerMessage            = "Erreur serveur"
+	errTokenGenerationMessage   = "Erreur génération token"
+	errRefreshGenerationMessage = "Erreur génération refresh token"
+)
+
 func main() {
 	logger.Init("auth-service")
 	defer logger.Close()
@@ -56,13 +122,24 @@ func main() {
 	}
 	defer pool.Close()
 
+	db := &poolAdapter{p: pool}
+
+	router := newAuthRouter(db, jwtSecret, accessTokenTTL, refreshTokenTTL)
+
+	logger.Info("Auth Service démarré sur le port %s", port)
+	if err := router.Run(":" + port); err != nil {
+		logger.Fatal("Erreur démarrage serveur: %v", err)
+	}
+}
+
+func newAuthRouter(db dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL time.Duration) *gin.Engine {
 	router := gin.Default()
 
 	router.GET("/health", func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
 		defer cancel()
 		dbStatus := "connected"
-		if err := pool.Ping(ctx); err != nil {
+		if err := db.Ping(ctx); err != nil {
 			dbStatus = "disconnected"
 		}
 		c.JSON(http.StatusOK, gin.H{
@@ -74,11 +151,11 @@ func main() {
 
 	api := router.Group("/api/v1/auth")
 	{
-		api.POST("/register", register(pool, jwtSecret, accessTokenTTL, refreshTokenTTL))
-		api.POST("/login", login(pool, jwtSecret, accessTokenTTL, refreshTokenTTL))
-		api.POST("/refresh", refresh(pool, jwtSecret, accessTokenTTL, refreshTokenTTL))
-		api.POST("/logout", logout(pool))
-		api.GET("/me", authMiddleware(jwtSecret), me(pool))
+		api.POST("/register", register(db, jwtSecret, accessTokenTTL, refreshTokenTTL))
+		api.POST("/login", login(db, jwtSecret, accessTokenTTL, refreshTokenTTL))
+		api.POST("/refresh", refresh(db, jwtSecret, accessTokenTTL, refreshTokenTTL))
+		api.POST("/logout", logout(db))
+		api.GET("/me", authMiddleware(jwtSecret), me(db))
 	}
 
 	logger.Info("Auth Service started on port %s", port)
@@ -159,11 +236,11 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pe) && pe.Code == "23505"
 }
 
-func deleteExpiredRefreshTokens(ctx context.Context, pool *pgxpool.Pool) {
+func deleteExpiredRefreshTokens(ctx context.Context, pool dbPool) {
 	_, _ = pool.Exec(ctx, `DELETE FROM auth_refresh_tokens WHERE expires_at < NOW()`)
 }
 
-func register(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenTTL time.Duration) gin.HandlerFunc {
+func register(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input struct {
 			Username string `json:"username" binding:"required"`
@@ -176,7 +253,7 @@ func register(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshToken
 		}
 
 		emailNorm := normalizeEmail(input.Email)
-		hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+		hash, err := bcryptGenerate([]byte(input.Password), bcrypt.DefaultCost)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Password encryption error"})
 			return
@@ -211,15 +288,15 @@ func register(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshToken
 			CreatedAt: now.Format(time.RFC3339),
 		}
 
-		token, err := generateJWT(user.ID, user.Email, jwtSecret, accessTokenTTL)
+		token, err := generateJWTFn(user.ID, user.Email, jwtSecret, accessTokenTTL)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Token generation error"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errTokenGenerationMessage})
 			return
 		}
 
-		refreshToken, refreshHash, err := generateRefreshToken()
+		refreshToken, refreshHash, err := generateRefreshTokenFn()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Refresh token generation error"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errRefreshGenerationMessage})
 			return
 		}
 
@@ -241,7 +318,7 @@ func register(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshToken
 	}
 }
 
-func login(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenTTL time.Duration) gin.HandlerFunc {
+func login(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input struct {
 			Email    string `json:"email" binding:"required"`
@@ -282,15 +359,15 @@ func login(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenTTL
 			CreatedAt: createdAt.UTC().Format(time.RFC3339),
 		}
 
-		token, err := generateJWT(user.ID, user.Email, jwtSecret, accessTokenTTL)
+		token, err := generateJWTFn(user.ID, user.Email, jwtSecret, accessTokenTTL)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Token generation error"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errTokenGenerationMessage})
 			return
 		}
 
-		refreshToken, refreshHash, err := generateRefreshToken()
+		refreshToken, refreshHash, err := generateRefreshTokenFn()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Refresh token generation error"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errRefreshGenerationMessage})
 			return
 		}
 
@@ -313,7 +390,7 @@ func login(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenTTL
 	}
 }
 
-func refresh(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenTTL time.Duration) gin.HandlerFunc {
+func refresh(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input struct {
 			RefreshToken string `json:"refresh_token" binding:"required"`
@@ -322,87 +399,11 @@ func refresh(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenT
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-
-		hash := hashRefreshToken(input.RefreshToken)
-		now := time.Now().UTC()
-
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		defer cancel()
-		deleteExpiredRefreshTokens(ctx, pool)
-
-		tx, err := pool.Begin(ctx)
+		accessToken, newRefreshToken, status, msg, err := executeRefresh(ctx, pool, input.RefreshToken, jwtSecret, accessTokenTTL, refreshTokenTTL)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Server error"})
-			return
-		}
-		defer func() { _ = tx.Rollback(ctx) }()
-
-		var userID string
-		var expiresAt time.Time
-		var revokedAt *time.Time
-		err = tx.QueryRow(ctx, `
-			SELECT user_id, expires_at, revoked_at
-			FROM auth_refresh_tokens WHERE token_hash = $1
-			FOR UPDATE
-		`, hash).Scan(&userID, &expiresAt, &revokedAt)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token"})
-			return
-		}
-		if revokedAt != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Revoked refresh token"})
-			return
-		}
-		if !now.Before(expiresAt) {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Expired refresh token"})
-			return
-		}
-
-		var username, email, status string
-		var createdAt time.Time
-		err = tx.QueryRow(ctx, `
-			SELECT username, email, status, created_at FROM auth_users WHERE id = $1
-		`, userID).Scan(&username, &email, &status, &createdAt)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
-			return
-		}
-
-		newRefreshToken, newRefreshHash, err := generateRefreshToken()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Refresh token generation error"})
-			return
-		}
-
-		_, err = tx.Exec(ctx, `
-			UPDATE auth_refresh_tokens
-			SET revoked_at = $1, replaced_by_hash = $2
-			WHERE token_hash = $3
-		`, now, newRefreshHash, hash)
-		if err != nil {
-			logger.Error("refresh update old token: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Server error"})
-			return
-		}
-
-		_, err = tx.Exec(ctx, `
-			INSERT INTO auth_refresh_tokens (token_hash, user_id, created_at, expires_at)
-			VALUES ($1, $2, $3, $4)
-		`, newRefreshHash, userID, now, now.Add(refreshTokenTTL))
-		if err != nil {
-			logger.Error("refresh insert new token: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Server error"})
-			return
-		}
-
-		if err := tx.Commit(ctx); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Server error"})
-			return
-		}
-
-		accessToken, err := generateJWT(userID, email, jwtSecret, accessTokenTTL)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Token generation error"})
+			c.JSON(status, gin.H{"error": msg})
 			return
 		}
 
@@ -413,7 +414,103 @@ func refresh(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenT
 	}
 }
 
-func logout(pool *pgxpool.Pool) gin.HandlerFunc {
+func executeRefresh(
+	ctx context.Context,
+	pool dbPool,
+	refreshToken, jwtSecret string,
+	accessTokenTTL, refreshTokenTTL time.Duration,
+) (string, string, int, string, error) {
+	hash := hashRefreshToken(refreshToken)
+	now := time.Now().UTC()
+	deleteExpiredRefreshTokens(ctx, pool)
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return "", "", http.StatusInternalServerError, errServerMessage, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	userID, expiresAt, revokedAt, err := getRefreshTokenState(ctx, tx, hash)
+	if err != nil {
+		return "", "", http.StatusUnauthorized, "Refresh token invalide", err
+	}
+	if status, msg, invalid := refreshStateError(now, expiresAt, revokedAt); invalid {
+		return "", "", status, msg, errors.New(msg)
+	}
+
+	email, err := getUserEmailForRefresh(ctx, tx, userID)
+	if err != nil {
+		return "", "", http.StatusUnauthorized, "Utilisateur introuvable", err
+	}
+
+	newRefreshToken, newRefreshHash, err := generateRefreshTokenFn()
+	if err != nil {
+		return "", "", http.StatusInternalServerError, errRefreshGenerationMessage, err
+	}
+
+	if err := rotateRefreshToken(ctx, tx, now, hash, newRefreshHash, userID, refreshTokenTTL); err != nil {
+		return "", "", http.StatusInternalServerError, errServerMessage, err
+	}
+
+	accessToken, err := generateJWTFn(userID, email, jwtSecret, accessTokenTTL)
+	if err != nil {
+		return "", "", http.StatusInternalServerError, errTokenGenerationMessage, err
+	}
+	return accessToken, newRefreshToken, http.StatusOK, "", nil
+}
+
+func refreshStateError(now, expiresAt time.Time, revokedAt *time.Time) (int, string, bool) {
+	if revokedAt != nil {
+		return http.StatusUnauthorized, "Refresh token révoqué", true
+	}
+	if !now.Before(expiresAt) {
+		return http.StatusUnauthorized, "Refresh token expiré", true
+	}
+	return http.StatusOK, "", false
+}
+
+func getRefreshTokenState(ctx context.Context, tx txDB, hash string) (string, time.Time, *time.Time, error) {
+	var userID string
+	var expiresAt time.Time
+	var revokedAt *time.Time
+	err := tx.QueryRow(ctx, `
+		SELECT user_id, expires_at, revoked_at
+		FROM auth_refresh_tokens WHERE token_hash = $1
+		FOR UPDATE
+	`, hash).Scan(&userID, &expiresAt, &revokedAt)
+	return userID, expiresAt, revokedAt, err
+}
+
+func getUserEmailForRefresh(ctx context.Context, tx txDB, userID string) (string, error) {
+	var email string
+	if err := tx.QueryRow(ctx, `SELECT email FROM auth_users WHERE id = $1`, userID).Scan(&email); err != nil {
+		return "", err
+	}
+	return email, nil
+}
+
+func rotateRefreshToken(ctx context.Context, tx txDB, now time.Time, oldHash, newHash, userID string, ttl time.Duration) error {
+	if _, err := tx.Exec(ctx, `
+		UPDATE auth_refresh_tokens
+		SET revoked_at = $1, replaced_by_hash = $2
+		WHERE token_hash = $3
+	`, now, newHash, oldHash); err != nil {
+		logger.Error("refresh update old token: %v", err)
+		return err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO auth_refresh_tokens (token_hash, user_id, created_at, expires_at)
+		VALUES ($1, $2, $3, $4)
+	`, newHash, userID, now, now.Add(ttl)); err != nil {
+		logger.Error("refresh insert new token: %v", err)
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+func logout(pool dbPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var input struct {
 			RefreshToken string `json:"refresh_token" binding:"required"`
@@ -441,7 +538,7 @@ func logout(pool *pgxpool.Pool) gin.HandlerFunc {
 	}
 }
 
-func me(pool *pgxpool.Pool) gin.HandlerFunc {
+func me(pool dbPool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, _ := c.Get("user_id")
 
