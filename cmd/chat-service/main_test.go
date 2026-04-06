@@ -60,6 +60,12 @@ func (stubChatService) CreateChat(ctx context.Context, creatorID string, req cha
 func (stubChatService) GetMyChats(ctx context.Context, userID string) ([]chats.Chat, error) {
 	return nil, nil
 }
+func (stubChatService) UpdateChat(ctx context.Context, id string, name string) error {
+	return nil
+}
+func (stubChatService) DeleteChat(ctx context.Context, id string) error {
+	return nil
+}
 
 func TestNewChatRouter(t *testing.T) {
 	gin.SetMode(gin.TestMode)

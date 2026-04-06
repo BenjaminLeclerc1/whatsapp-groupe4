@@ -18,6 +18,8 @@ const (
 type mockRepo struct {
 	createFn      func(ctx context.Context, chat Chat) error
 	findByUserFn  func(ctx context.Context, userID string) ([]Chat, error)
+	updateNameFn  func(ctx context.Context, id, name string) error
+	deleteFn      func(ctx context.Context, id string) error
 }
 
 func (m *mockRepo) Create(ctx context.Context, chat Chat) error {
@@ -25,6 +27,18 @@ func (m *mockRepo) Create(ctx context.Context, chat Chat) error {
 }
 func (m *mockRepo) FindByUser(ctx context.Context, userID string) ([]Chat, error) {
 	return m.findByUserFn(ctx, userID)
+}
+func (m *mockRepo) UpdateName(ctx context.Context, id, name string) error {
+	if m.updateNameFn == nil {
+		return nil
+	}
+	return m.updateNameFn(ctx, id, name)
+}
+func (m *mockRepo) Delete(ctx context.Context, id string) error {
+	if m.deleteFn == nil {
+		return nil
+	}
+	return m.deleteFn(ctx, id)
 }
 
 // ─── CreateChat ───────────────────────────────────────────────────────────────

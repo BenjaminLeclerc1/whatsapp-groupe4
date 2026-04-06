@@ -326,6 +326,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -350,14 +351,17 @@ func main() {
 	logger.Init("api-gateway")
 	defer logger.Close()
 
-	router := gin.Default()
+	jwtSecret := getEnv("JWT_SECRET", "whatsapp-groupe4-secret-change-in-prod")
+	router := newGatewayRouter(jwtSecret)
+	port := getEnv("API_GATEWAY_PORT", "8080")
+	log.Printf("Gateway running on port %s", port)
+	router.Run(":" + port)
+}
 
-	// 🛑 FIX 1: Disable automatic redirects to prevent 307 errors
+func newGatewayRouter(jwtSecret string) *gin.Engine {
+	router := gin.Default()
 	router.RedirectTrailingSlash = false
 	router.RedirectFixedPath = false
-
-	// ✅ FIX 2: Global CORS Configuration (Must be first)
-	// CORS_ALLOW_ORIGINS = liste séparée par des virgules, ex. https://monapp.z6.web.core.windows.net,http://localhost:3000
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     corsAllowOrigins(),
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -367,29 +371,25 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// Service URLs
 	authServiceURL := getEnv("AUTH_SERVICE_URL", "http://localhost:8086")
 	userServiceURL := getEnv("USER_SERVICE_URL", "http://localhost:8081")
 	chatServiceURL := getEnv("CHAT_SERVICE_URL", "http://localhost:8088")
-	jwtSecret      := getEnv("JWT_SECRET", "whatsapp-groupe4-secret-change-in-prod")
+
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "api-gateway"})
+	})
 
 	api := router.Group("/api/v1")
-    {
-        api.Any("/auth/*path", proxyHandler(authServiceURL))
-
-        protected := api.Group("/", authMiddleware(jwtSecret))
-        {
-            protected.Any("/users/*path", proxyHandler(userServiceURL))
-            
-            // ✅ FIX: Explicitly handle "/chats" WITHOUT a wildcard 
-            // and then handle sub-paths WITH the wildcard.
-            protected.Any("/chats", proxyHandler(chatServiceURL))       // Matches /api/v1/chats
-            protected.Any("/chats/*path", proxyHandler(chatServiceURL)) // Matches /api/v1/chats/123
-        }
-    }
-	port := getEnv("API_GATEWAY_PORT", "8080")
-	log.Printf("Gateway running on port %s", port)
-	router.Run(":" + port)
+	{
+		api.Any("/auth/*path", proxyHandler(authServiceURL))
+		protected := api.Group("/", authMiddleware(jwtSecret))
+		{
+			protected.Any("/users/*path", proxyHandler(userServiceURL))
+			protected.Any("/chats", proxyHandler(chatServiceURL))
+			protected.Any("/chats/*path", proxyHandler(chatServiceURL))
+		}
+	}
+	return router
 }
 
 func proxyHandler(targetURL string) gin.HandlerFunc {
@@ -442,6 +442,14 @@ func authMiddleware(jwtSecret string) gin.HandlerFunc {
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" { return value }
 	return defaultValue
+}
+
+func requireEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		log.Fatal(fmt.Sprintf("%s environment variable is required", key))
+	}
+	return v
 }
 
 func corsAllowOrigins() []string {
