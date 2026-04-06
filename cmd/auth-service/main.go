@@ -24,7 +24,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// User représente un utilisateur (inscription/connexion)
 type User struct {
 	ID        string `json:"id"`
 	Username  string `json:"username"`
@@ -33,7 +32,6 @@ type User struct {
 	CreatedAt string `json:"created_at"`
 }
 
-// Claims JWT
 type Claims struct {
 	UserID string `json:"user_id"`
 	Email  string `json:"email"`
@@ -47,13 +45,6 @@ func main() {
 	databaseURL := requireEnv("DATABASE_URL")
 	jwtSecret := requireEnv("JWT_SECRET")
 	port := getEnv("PORT", "8084")
-	router := gin.Default()
-
-	port := getEnv("PORT", "8084")
-	// jwtSecret := requireEnv("JWT_SECRET")
-	// In auth-service/main.go
-jwtSecret := requireEnv("JWT_SECRET")
-log.Printf("DEBUG: Auth-Service using Secret: %s", jwtSecret)
 	accessTokenTTL := getEnvDuration("ACCESS_TOKEN_TTL", 24*time.Hour)
 	refreshTokenTTL := getEnvDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour)
 
@@ -90,9 +81,9 @@ log.Printf("DEBUG: Auth-Service using Secret: %s", jwtSecret)
 		api.GET("/me", authMiddleware(jwtSecret), me(pool))
 	}
 
-	logger.Info("Auth Service démarré sur le port %s", port)
+	logger.Info("Auth Service started on port %s", port)
 	if err := router.Run(":" + port); err != nil {
-		logger.Fatal("Erreur démarrage serveur: %v", err)
+		logger.Fatal("Server error: %v", err)
 	}
 }
 
@@ -142,7 +133,7 @@ func getEnv(key, defaultValue string) string {
 func requireEnv(key string) string {
 	value := os.Getenv(key)
 	if value == "" {
-		log.Fatalf("Variable d'environnement requise non définie : %s", key)
+		log.Fatalf("Required environment variable not set: %s", key)
 	}
 	return value
 }
@@ -187,7 +178,7 @@ func register(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshToken
 		emailNorm := normalizeEmail(input.Email)
 		hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors du chiffrement du mot de passe"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Password encryption error"})
 			return
 		}
 
@@ -204,11 +195,11 @@ func register(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshToken
 		`, userID, strings.TrimSpace(input.Username), emailNorm, string(hash), now)
 		if err != nil {
 			if isUniqueViolation(err) {
-				c.JSON(http.StatusConflict, gin.H{"error": "Un compte existe déjà avec cet email"})
+				c.JSON(http.StatusConflict, gin.H{"error": "Account already exists with this email"})
 				return
 			}
 			logger.Error("register insert user: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de la création du compte"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Account creation error"})
 			return
 		}
 
@@ -222,13 +213,13 @@ func register(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshToken
 
 		token, err := generateJWT(user.ID, user.Email, jwtSecret, accessTokenTTL)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération token"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Token generation error"})
 			return
 		}
 
 		refreshToken, refreshHash, err := generateRefreshToken()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération refresh token"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Refresh token generation error"})
 			return
 		}
 
@@ -238,7 +229,7 @@ func register(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshToken
 		`, refreshHash, userID, now, now.Add(refreshTokenTTL))
 		if err != nil {
 			logger.Error("register insert refresh: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de la création de la session"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Session creation error"})
 			return
 		}
 
@@ -274,12 +265,12 @@ func login(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenTTL
 			FROM auth_users WHERE email = $1
 		`, emailNorm).Scan(&id, &username, &email, &passwordHash, &status, &createdAt)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Email ou mot de passe incorrect"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
 			return
 		}
 
 		if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(input.Password)); err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Email ou mot de passe incorrect"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
 			return
 		}
 
@@ -293,13 +284,13 @@ func login(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenTTL
 
 		token, err := generateJWT(user.ID, user.Email, jwtSecret, accessTokenTTL)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération token"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Token generation error"})
 			return
 		}
 
 		refreshToken, refreshHash, err := generateRefreshToken()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération refresh token"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Refresh token generation error"})
 			return
 		}
 
@@ -310,7 +301,7 @@ func login(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenTTL
 		`, refreshHash, id, now, now.Add(refreshTokenTTL))
 		if err != nil {
 			logger.Error("login insert refresh: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de la création de la session"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Session creation error"})
 			return
 		}
 
@@ -341,7 +332,7 @@ func refresh(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenT
 
 		tx, err := pool.Begin(ctx)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur serveur"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Server error"})
 			return
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
@@ -355,15 +346,15 @@ func refresh(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenT
 			FOR UPDATE
 		`, hash).Scan(&userID, &expiresAt, &revokedAt)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token invalide"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token"})
 			return
 		}
 		if revokedAt != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token révoqué"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Revoked refresh token"})
 			return
 		}
 		if !now.Before(expiresAt) {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token expiré"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Expired refresh token"})
 			return
 		}
 
@@ -373,13 +364,13 @@ func refresh(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenT
 			SELECT username, email, status, created_at FROM auth_users WHERE id = $1
 		`, userID).Scan(&username, &email, &status, &createdAt)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Utilisateur introuvable"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
 			return
 		}
 
 		newRefreshToken, newRefreshHash, err := generateRefreshToken()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération refresh token"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Refresh token generation error"})
 			return
 		}
 
@@ -390,7 +381,7 @@ func refresh(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenT
 		`, now, newRefreshHash, hash)
 		if err != nil {
 			logger.Error("refresh update old token: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur serveur"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Server error"})
 			return
 		}
 
@@ -400,18 +391,18 @@ func refresh(pool *pgxpool.Pool, jwtSecret string, accessTokenTTL, refreshTokenT
 		`, newRefreshHash, userID, now, now.Add(refreshTokenTTL))
 		if err != nil {
 			logger.Error("refresh insert new token: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur serveur"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Server error"})
 			return
 		}
 
 		if err := tx.Commit(ctx); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur serveur"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Server error"})
 			return
 		}
 
 		accessToken, err := generateJWT(userID, email, jwtSecret, accessTokenTTL)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération token"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Token generation error"})
 			return
 		}
 
@@ -428,7 +419,7 @@ func logout(pool *pgxpool.Pool) gin.HandlerFunc {
 			RefreshToken string `json:"refresh_token" binding:"required"`
 		}
 		if err := c.ShouldBindJSON(&input); err != nil || input.RefreshToken == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "refresh_token requis"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "refresh_token required"})
 			return
 		}
 
@@ -463,7 +454,7 @@ func me(pool *pgxpool.Pool) gin.HandlerFunc {
 			SELECT username, email, status, created_at FROM auth_users WHERE id = $1
 		`, userID).Scan(&username, &email, &status, &createdAt)
 		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Utilisateur non trouvé"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
@@ -509,7 +500,7 @@ func authMiddleware(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		auth := c.GetHeader("Authorization")
 		if auth == "" || len(auth) < 8 || auth[:7] != "Bearer " {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token manquant ou invalide"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid token"})
 			c.Abort()
 			return
 		}
@@ -521,13 +512,13 @@ func authMiddleware(jwtSecret string) gin.HandlerFunc {
 			return []byte(jwtSecret), nil
 		})
 		if err != nil || !token.Valid {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token invalide ou expiré"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
 			c.Abort()
 			return
 		}
 		claims, ok := token.Claims.(*Claims)
 		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token invalide"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			c.Abort()
 			return
 		}
