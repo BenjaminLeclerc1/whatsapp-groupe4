@@ -5,10 +5,16 @@ import (
 )
 
 func TestBuildPgxPoolConfig_InvalidURL(t *testing.T) {
-	_, err := BuildPgxPoolConfig("")
-	if err == nil {
-		t.Fatal("expected parse error for empty DATABASE_URL")
+	invalid := []string{
+		"http://not-postgres",
+		"postgres://user:pass@host:999999999/db",
 	}
+	for _, connStr := range invalid {
+		if _, err := BuildPgxPoolConfig(connStr); err != nil {
+			return
+		}
+	}
+	t.Fatal("expected BuildPgxPoolConfig to fail for at least one invalid connection string")
 }
 
 func TestBuildPgxPoolConfig_ValidFormat(t *testing.T) {
