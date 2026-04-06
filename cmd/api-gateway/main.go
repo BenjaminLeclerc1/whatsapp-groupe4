@@ -22,7 +22,7 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-const bearerPrefix = "Bearer "
+const authBearerPrefix = "Bearer "
 
 func main() {
 	logger.Init("api-gateway")
@@ -139,11 +139,11 @@ func isPublicUserPath(path string) bool {
 }
 
 func parseBearerClaims(authHeader, jwtSecret string) (*Claims, error) {
-	if authHeader == "" || !strings.HasPrefix(authHeader, bearerPrefix) || len(authHeader) <= len(bearerPrefix) {
+	if authHeader == "" || !strings.HasPrefix(authHeader, authBearerPrefix) || len(authHeader) <= len(authBearerPrefix) {
 		return nil, errors.New("missing bearer token")
 	}
 
-	tokenStr := strings.TrimPrefix(authHeader, bearerPrefix)
+	tokenStr := strings.TrimPrefix(authHeader, authBearerPrefix)
 	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(t *jwt.Token) (interface{}, error) {
 		if t.Method != jwt.SigningMethodHS256 {
 			return nil, errors.New("unexpected signing method")
