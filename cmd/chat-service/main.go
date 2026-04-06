@@ -48,10 +48,13 @@ func main() {
 	// 	api.GET("/my", handler.GetMyChats)
 	// }
 
-	// 3. Routes
-	r := gin.Default()
+	r := newChatRouter(handler)
+	port := getEnv("PORT", "8088")
+	r.Run(":" + port)
+}
 
-	// 🛑 CRITICAL FOR DOCKER: Stop Gin from redirecting to internal hostnames
+func newChatRouter(handler *chats.Handler) *gin.Engine {
+	r := gin.Default()
 	r.RedirectTrailingSlash = false
 	r.RedirectFixedPath = false
 
@@ -59,15 +62,13 @@ func main() {
 	{
 		api.Use(middleware.ExtractUserID())
 
-		// ✅ Handle both so Gin never feels the need to redirect
-		api.GET("", handler.GetMyChats)  // matches /api/v1/chats
-		api.GET("/", handler.GetMyChats) // matches /api/v1/chats/
+		api.GET("", handler.GetMyChats)
+		api.GET("/", handler.GetMyChats)
 
 		api.POST("", handler.CreateChat)
 		api.POST("/", handler.CreateChat)
 	}
-	port := getEnv("PORT", "8088")
-	r.Run(":" + port)
+	return r
 }
 
 func getEnv(key, defaultValue string) string {
@@ -93,15 +94,15 @@ func initDB(databaseURL string) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-func runMigrations(databaseURL string) {
-	// Add ?x-migrations-table=migrations_chats to the URL
-	// This prevents conflicts with other services in the same shard
-	migrationURL := databaseURL
-	if !strings.Contains(migrationURL, "?") {
-		migrationURL += "?x-migrations-table=migrations_chats"
-	} else {
-		migrationURL += "&x-migrations-table=migrations_chats"
+func chatMigrationURL(databaseURL string) string {
+	if !strings.Contains(databaseURL, "?") {
+		return databaseURL + "?x-migrations-table=migrations_chats"
 	}
+	return databaseURL + "&x-migrations-table=migrations_chats"
+}
+
+func runMigrations(databaseURL string) {
+	migrationURL := chatMigrationURL(databaseURL)
 
 	m, err := migrate.New(
 		"file://migrations/chat-service",

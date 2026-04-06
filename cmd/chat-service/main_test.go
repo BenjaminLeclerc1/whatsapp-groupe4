@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"os"
-	"strings"
 	"testing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/whatsapp-groupe4/internal/chats"
 )
 
 func TestGetEnv_Default(t *testing.T) {
@@ -40,44 +43,30 @@ func TestGetEnv_DefaultPort(t *testing.T) {
 	}
 }
 
-func TestMigrationURL_WithoutQueryParam(t *testing.T) {
-	url := "postgres://user:pass@localhost/db"
-	var result string
-	if !strings.Contains(url, "?") {
-		result = url + "?x-migrations-table=migrations_chats"
-	} else {
-		result = url + "&x-migrations-table=migrations_chats"
+func TestChatMigrationURL(t *testing.T) {
+	if got := chatMigrationURL("postgres://user:pass@localhost/db"); got != "postgres://user:pass@localhost/db?x-migrations-table=migrations_chats" {
+		t.Errorf("unexpected: %s", got)
 	}
-	expected := "postgres://user:pass@localhost/db?x-migrations-table=migrations_chats"
-	if result != expected {
-		t.Errorf("expected '%s', got '%s'", expected, result)
+	if got := chatMigrationURL("postgres://user:pass@localhost/db?sslmode=disable"); got != "postgres://user:pass@localhost/db?sslmode=disable&x-migrations-table=migrations_chats" {
+		t.Errorf("unexpected: %s", got)
 	}
 }
 
-func TestMigrationURL_WithExistingQueryParam(t *testing.T) {
-	url := "postgres://user:pass@localhost/db?sslmode=disable"
-	var result string
-	if !strings.Contains(url, "?") {
-		result = url + "?x-migrations-table=migrations_chats"
-	} else {
-		result = url + "&x-migrations-table=migrations_chats"
-	}
-	expected := "postgres://user:pass@localhost/db?sslmode=disable&x-migrations-table=migrations_chats"
-	if result != expected {
-		t.Errorf("expected '%s', got '%s'", expected, result)
-	}
+type stubChatService struct{}
+
+func (stubChatService) CreateChat(ctx context.Context, creatorID string, req chats.CreateChatRequest) (chats.Chat, error) {
+	return chats.Chat{}, nil
+}
+func (stubChatService) GetMyChats(ctx context.Context, userID string) ([]chats.Chat, error) {
+	return nil, nil
 }
 
-func TestMigrationURL_ContainsTableName(t *testing.T) {
-	url := "postgres://localhost/db"
-	var result string
-	if !strings.Contains(url, "?") {
-		result = url + "?x-migrations-table=migrations_chats"
-	} else {
-		result = url + "&x-migrations-table=migrations_chats"
-	}
-	if !strings.Contains(result, "migrations_chats") {
-		t.Errorf("expected result to contain 'migrations_chats', got: %s", result)
+func TestNewChatRouter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := chats.NewHandler(stubChatService{})
+	r := newChatRouter(h)
+	if r == nil {
+		t.Fatal("nil router")
 	}
 }
 

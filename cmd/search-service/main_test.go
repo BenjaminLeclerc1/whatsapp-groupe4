@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -546,5 +548,42 @@ func TestGetSearchStats_AfterIndex(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp["indexed_messages"].(float64) != 1 {
 		t.Errorf("expected 1 message, got %v", resp["indexed_messages"])
+	}
+}
+
+func TestSearchMigrationURL(t *testing.T) {
+	if got := searchMigrationURL("postgres://h/db"); got != "postgres://h/db?x-migrations-table=migrations_search" {
+		t.Errorf("got %s", got)
+	}
+	if got := searchMigrationURL("postgres://h/db?sslmode=disable"); got != "postgres://h/db?sslmode=disable&x-migrations-table=migrations_search" {
+		t.Errorf("got %s", got)
+	}
+}
+
+type fakeSearchPool struct {
+	err error
+}
+
+func (f *fakeSearchPool) Ping(ctx context.Context) error {
+	return f.err
+}
+
+func TestNewSearchRouter_HealthConnected(t *testing.T) {
+	r := newSearchRouter(&fakeSearchPool{err: nil})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/health", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestNewSearchRouter_HealthDisconnected(t *testing.T) {
+	r := newSearchRouter(&fakeSearchPool{err: errors.New("down")})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/health", nil))
+	var body map[string]interface{}
+	_ = json.Unmarshal(w.Body.Bytes(), &body)
+	if body["database"] != "disconnected" {
+		t.Errorf("expected disconnected, got %v", body["database"])
 	}
 }

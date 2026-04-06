@@ -212,6 +212,28 @@ func TestRequireEnv_Set(t *testing.T) {
 	}
 }
 
+func TestNewAuthRouter_Health(t *testing.T) {
+	pool := &mockPool{}
+	r := newAuthRouter(pool, "secret", time.Hour, time.Hour)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestNewAuthRouter_MeWithoutToken(t *testing.T) {
+	pool := &mockPool{}
+	r := newAuthRouter(pool, "secret", time.Hour, time.Hour)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // getEnvDuration
 // ═══════════════════════════════════════════════════════════════════════════════

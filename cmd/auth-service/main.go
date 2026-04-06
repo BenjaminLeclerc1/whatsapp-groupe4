@@ -120,13 +120,22 @@ func main() {
 
 	db := &poolAdapter{p: pool}
 
+	router := newAuthRouter(db, jwtSecret, accessTokenTTL, refreshTokenTTL)
+
+	logger.Info("Auth Service démarré sur le port %s", port)
+	if err := router.Run(":" + port); err != nil {
+		logger.Fatal("Erreur démarrage serveur: %v", err)
+	}
+}
+
+func newAuthRouter(db dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL time.Duration) *gin.Engine {
 	router := gin.Default()
 
 	router.GET("/health", func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
 		defer cancel()
 		dbStatus := "connected"
-		if err := pool.Ping(ctx); err != nil {
+		if err := db.Ping(ctx); err != nil {
 			dbStatus = "disconnected"
 		}
 		c.JSON(http.StatusOK, gin.H{
@@ -145,10 +154,7 @@ func main() {
 		api.GET("/me", authMiddleware(jwtSecret), me(db))
 	}
 
-	logger.Info("Auth Service démarré sur le port %s", port)
-	if err := router.Run(":" + port); err != nil {
-		logger.Fatal("Erreur démarrage serveur: %v", err)
-	}
+	return router
 }
 
 func initDB(databaseURL string) (*pgxpool.Pool, error) {

@@ -372,3 +372,71 @@ func TestRequireEnv_Set(t *testing.T) {
 		t.Errorf("expected 'present', got '%s'", result)
 	}
 }
+
+// ─── newGatewayRouter (même graphe de routes que main, testable par la CI) ───
+
+func TestNewGatewayRouter_Health(t *testing.T) {
+	r := newGatewayRouter("test-jwt-secret")
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestNewGatewayRouter_AuthProxiesToBackend(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+	os.Setenv("AUTH_SERVICE_URL", backend.URL)
+	defer os.Unsetenv("AUTH_SERVICE_URL")
+
+	r := newGatewayRouter("secret")
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api/v1/auth/login")
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestNewGatewayRouter_ProtectedUsersSetsXUserID(t *testing.T) {
+	var gotUser string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUser = r.Header.Get("X-User-ID")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+	os.Setenv("USER_SERVICE_URL", backend.URL)
+	defer os.Unsetenv("USER_SERVICE_URL")
+
+	secret := "gw-secret"
+	tok, err := generateTestJWT(secret, "uid-xyz", "u@t.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newGatewayRouter(secret)
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/users/me", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+	if gotUser != "uid-xyz" {
+		t.Errorf("X-User-ID: want uid-xyz, got %q", gotUser)
+	}
+}

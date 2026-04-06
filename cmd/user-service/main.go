@@ -73,6 +73,14 @@ func main() {
 		JWTSecret: jwtSecret,
 	}
 
+	router := newUserRouter(app)
+
+	port := getEnv("PORT", "8081")
+	logger.Info("User Service started on port %s", port)
+	router.Run(":" + port)
+}
+
+func newUserRouter(app *App) *gin.Engine {
 	router := gin.Default()
 
 	router.Use(cors.New(cors.Config{
@@ -84,7 +92,6 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// IMPORTANT: Ensure OPTIONS requests return 200 OK immediately
 	router.OPTIONS("/*path", func(c *gin.Context) {
 		c.AbortWithStatus(200)
 	})
@@ -101,9 +108,7 @@ func main() {
 		api.GET("", app.getAllUsers)
 	}
 
-	port := getEnv("PORT", "8081")
-	logger.Info("User Service started on port %s", port)
-	router.Run(":" + port)
+	return router
 }
 
 // --- HANDLERS ---

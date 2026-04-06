@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
 	"os"
 	"testing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/whatsapp-groupe4/internal/channels"
 )
 
 func TestGetEnv_Default(t *testing.T) {
@@ -67,4 +71,50 @@ func TestInitDB_ValidFormat(t *testing.T) {
 		pool.Close()
 	}
 	_ = err // On couvre juste la ligne NewWithConfig
+}
+
+type stubChannelService struct{}
+
+func (stubChannelService) CreateChannel(ctx context.Context, userID string, req channels.CreateChannelRequest) (channels.ChannelResponse, error) {
+	return channels.ChannelResponse{}, nil
+}
+func (stubChannelService) GetChannel(ctx context.Context, userID, channelID string) (channels.ChannelResponse, error) {
+	return channels.ChannelResponse{}, nil
+}
+func (stubChannelService) UpdateChannel(ctx context.Context, userID, channelID string, req channels.UpdateChannelRequest) (channels.ChannelResponse, error) {
+	return channels.ChannelResponse{}, nil
+}
+func (stubChannelService) DeleteChannel(ctx context.Context, userID, channelID string) error { return nil }
+func (stubChannelService) ListMyChannels(ctx context.Context, userID string) (channels.ChannelListResponse, error) {
+	return channels.ChannelListResponse{}, nil
+}
+func (stubChannelService) AddMember(ctx context.Context, userID, channelID string, req channels.AddMemberRequest) (channels.Participant, error) {
+	return channels.Participant{}, nil
+}
+func (stubChannelService) RemoveMember(ctx context.Context, userID, channelID, targetUserID string) error {
+	return nil
+}
+func (stubChannelService) ListMembers(ctx context.Context, userID, channelID string) (channels.MemberListResponse, error) {
+	return channels.MemberListResponse{}, nil
+}
+func (stubChannelService) ListMessages(ctx context.Context, userID, channelID, cursor string, limit int) (channels.MessageListResponse, error) {
+	return channels.MessageListResponse{}, nil
+}
+
+func TestNewChannelRouter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := channels.NewHandler(stubChannelService{})
+	r := newChannelRouter(h)
+	if r == nil {
+		t.Fatal("nil router")
+	}
+}
+
+func TestChannelMigrationURL(t *testing.T) {
+	if got := channelMigrationURL("postgres://h/db"); got != "postgres://h/db?x-migrations-table=migrations_channels" {
+		t.Errorf("got %s", got)
+	}
+	if got := channelMigrationURL("postgres://h/db?sslmode=disable"); got != "postgres://h/db?sslmode=disable&x-migrations-table=migrations_channels" {
+		t.Errorf("got %s", got)
+	}
 }

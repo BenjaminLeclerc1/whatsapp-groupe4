@@ -98,6 +98,30 @@ func TestUserStruct(t *testing.T) {
 	}
 }
 
+// ─── newUserRouter (aligné sur main) ──────────────────────────────────────────
+
+func TestNewUserRouter_OPTIONS(t *testing.T) {
+	app := emptyApp()
+	r := newUserRouter(app)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodOptions, "/api/v1/users/register", nil)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 for OPTIONS, got %d", w.Code)
+	}
+}
+
+func TestNewUserRouter_Logout(t *testing.T) {
+	app := emptyApp()
+	r := newUserRouter(app)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/users/logout", nil)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+}
+
 // ─── logout handler (pas de DB) ───────────────────────────────────────────────
 
 func TestLogout(t *testing.T) {
