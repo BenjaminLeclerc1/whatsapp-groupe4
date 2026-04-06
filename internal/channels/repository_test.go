@@ -177,7 +177,9 @@ func TestPgRepository_IsMember(t *testing.T) {
 	defer done()
 
 	rows := pgxmock.NewRows([]string{"exists"}).AddRow(true)
-	exp.ExpectQuery(`SELECT EXISTS`).WillReturnRows(rows)
+	exp.ExpectQuery(`SELECT EXISTS`).
+		WithArgs("c1", "u1").
+		WillReturnRows(rows)
 
 	repo := NewRepository(mock)
 	ok, err := repo.IsMember(context.Background(), "c1", "u1")
