@@ -66,15 +66,17 @@ func newGatewayRouter(jwtSecret string) *gin.Engine {
 
 	api := router.Group("/api/v1")
 	{
-		// Public routes
+		// Routes publiques (pas de JWT)
 		api.Any("/auth/*path", proxyHandler(authServiceURL))
 		api.Any("/search/*path", proxyHandler(searchServiceURL))
 		api.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 
-		// Protected routes
+		// Routes users : register/login publiques, reste protégé via isPublicUserPath()
+		api.Any("/users/*path", authMiddleware(jwtSecret), proxyHandler(userServiceURL))
+
+		// Routes protégées (JWT requis)
 		protected := api.Group("/", authMiddleware(jwtSecret))
 		{
-			protected.Any("/users/*path", proxyHandler(userServiceURL))
 			protected.Any("/chats", proxyHandler(chatServiceURL))
 			protected.Any("/chats/*path", proxyHandler(chatServiceURL))
 			protected.Any("/messages", proxyHandler(messageServiceURL))

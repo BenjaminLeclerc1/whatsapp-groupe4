@@ -23,7 +23,7 @@ function Login() {
     // ... (Your regex validation remains the same) ...
 
     try {
-      const response = await api.post("/users/login", {
+      const response = await api.post("/auth/login", {
         email: email,
         password: password,
       });
