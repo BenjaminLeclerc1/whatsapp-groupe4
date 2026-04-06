@@ -39,7 +39,7 @@ FROM golang:1.24-alpine AS builder
 WORKDIR /app
 
 # Install dependencies for building
-RUN apk add --no-cache git gcc musl-dev ca-certificates
+RUN apk add --no-cache ca-certificates gcc git musl-dev
 
 # Use a faster Go proxy to avoid TLS timeouts
 ENV GOPROXY=https://goproxy.io,direct

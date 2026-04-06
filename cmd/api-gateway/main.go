@@ -22,6 +22,8 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+const bearerPrefix = "Bearer "
+
 func main() {
 	logger.Init("api-gateway")
 	defer logger.Close()
@@ -115,37 +117,13 @@ func proxyHandler(targetURL string) gin.HandlerFunc {
 
 func authMiddleware(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Public user endpoints (no JWT required)
-		if c.Request.URL.Path == "/api/v1/users/register" || c.Request.URL.Path == "/api/v1/users/login" {
+		if isPublicUserPath(c.Request.URL.Path) || c.Request.Method == http.MethodOptions {
 			c.Next()
 			return
 		}
 
-		if c.Request.Method == http.MethodOptions {
-			c.Next()
-			return
-		}
-
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") || len(authHeader) <= len("Bearer ") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-			return
-		}
-
-		tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
-		token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(t *jwt.Token) (interface{}, error) {
-			if t.Method != jwt.SigningMethodHS256 {
-				return nil, errors.New("unexpected signing method")
-			}
-			return []byte(jwtSecret), nil
-		})
-		if err != nil || !token.Valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-			return
-		}
-
-		claims, ok := token.Claims.(*Claims)
-		if !ok {
+		claims, err := parseBearerClaims(c.GetHeader("Authorization"), jwtSecret)
+		if err != nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			return
 		}
@@ -154,6 +132,33 @@ func authMiddleware(jwtSecret string) gin.HandlerFunc {
 		c.Set("email", claims.Email)
 		c.Next()
 	}
+}
+
+func isPublicUserPath(path string) bool {
+	return path == "/api/v1/users/register" || path == "/api/v1/users/login"
+}
+
+func parseBearerClaims(authHeader, jwtSecret string) (*Claims, error) {
+	if authHeader == "" || !strings.HasPrefix(authHeader, bearerPrefix) || len(authHeader) <= len(bearerPrefix) {
+		return nil, errors.New("missing bearer token")
+	}
+
+	tokenStr := strings.TrimPrefix(authHeader, bearerPrefix)
+	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(t *jwt.Token) (interface{}, error) {
+		if t.Method != jwt.SigningMethodHS256 {
+			return nil, errors.New("unexpected signing method")
+		}
+		return []byte(jwtSecret), nil
+	})
+	if err != nil || !token.Valid {
+		return nil, errors.New("invalid token")
+	}
+
+	claims, ok := token.Claims.(*Claims)
+	if !ok {
+		return nil, errors.New("invalid token claims")
+	}
+	return claims, nil
 }
 
 func getEnv(key, defaultValue string) string {
