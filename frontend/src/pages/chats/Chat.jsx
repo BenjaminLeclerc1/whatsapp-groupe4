@@ -16,20 +16,22 @@ const Chats = () => {
     createChat,
     updateChat,
     deleteChat,
-    deleteMessage, // <-- RÉINTÉGRÉ
+    deleteMessage,
     getHistory,
     notifications,
     markNotificationsAsRead,
+    users,
   } = useApp();
 
   const [newMessage, setNewMessage] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [newChatData, setNewChatData] = useState({
-    participants: "",
+    participants: [],
     type: "private",
     name: "",
   });
+  const [contactSearch, setContactSearch] = useState("");
 
   const [openMenuId, setOpenMenuId] = useState(null);
   const [openChatActionId, setOpenChatActionId] = useState(null);
@@ -72,22 +74,38 @@ const Chats = () => {
     if (success) setNewMessage("");
   };
 
+  const toggleParticipant = (userId) => {
+    setNewChatData((prev) => {
+      const already = prev.participants.includes(userId);
+      return {
+        ...prev,
+        participants: already
+          ? prev.participants.filter((id) => id !== userId)
+          : [...prev.participants, userId],
+      };
+    });
+  };
+
+  const availableContacts = users.filter(
+    (u) =>
+      u.id !== currentUserId &&
+      (u.username?.toLowerCase().includes(contactSearch.toLowerCase()) ||
+        u.email?.toLowerCase().includes(contactSearch.toLowerCase()))
+  );
+
   const handleStartChat = async (e) => {
     e.preventDefault();
+    if (newChatData.participants.length === 0) return;
     setIsCreating(true);
     try {
-      const participantsArray = newChatData.participants
-        .split(",")
-        .map((id) => id.trim())
-        .filter((id) => id !== "");
-
       await createChat({
-        participants: participantsArray,
+        participants: newChatData.participants,
         type: newChatData.type === "groupe" ? "group" : "private",
         name: newChatData.name,
       });
       setShowModal(false);
-      setNewChatData({ participants: "", type: "private", name: "" });
+      setNewChatData({ participants: [], type: "private", name: "" });
+      setContactSearch("");
     } catch (err) {
       alert("Erreur: " + err.message);
     } finally {
@@ -118,7 +136,7 @@ const onRename = (e, chat) => {
         <aside className="sidebar">
           <header className="sidebar-header">
             <div className="user-avatar">
-              <img src={`https://ui-avatars.com/api/?name=User&background=075E54&color=fff`} alt="me" />
+              <img src={`https://ui-avatars.com/api/?name=User&background=075E54&color=fff`} alt="moi" />
             </div>
             <div className="header-actions">
               <button className="icon-btn" onClick={() => setShowModal(true)} style={{backgroundColor: 'green', padding: '5px 9px', color:'white'}}>
@@ -215,7 +233,7 @@ const onRename = (e, chat) => {
       )}
 
       <button className="menu-item delete" onClick={(e) => onDeleteChat(e, selectedChat)}>
-        Supprimer le chat
+        Supprimer la discussion
       </button>
     </div>
   )}
@@ -303,30 +321,96 @@ const onRename = (e, chat) => {
 
         {/* MODAL CRÉATION */}
         {showModal && (
-          <div className="modal-backdrop">
-            <div className="modal-box">
+          <div className="modal-backdrop" onClick={() => { setShowModal(false); setContactSearch(""); }}>
+            <div className="modal-box" onClick={(e) => e.stopPropagation()}>
               <header className="modal-header">
                 <h2>{newChatData.type === "groupe" ? "Nouveau Groupe" : "Nouveau Message"}</h2>
-                <button onClick={() => setShowModal(false)} className="close-modal-btn"  style={{backgroundColor: 'green', color: 'white', border: 'none', padding: '5px 9px', marginRight: '4px', cursor:'pointer'}}>
-                   <span className="material-icons">Fermé</span>
+                <button onClick={() => { setShowModal(false); setContactSearch(""); }} className="close-modal-btn">
+                  <span className="material-icons-round">close</span>
                 </button>
               </header>
               <form onSubmit={handleStartChat} className="modal-form">
-                <div className="type-selector" style={{marginBottom: '11px'}}>
-                  <button type="button" className={newChatData.type === "private" ? "active" : ""} onClick={() => setNewChatData({ ...newChatData, type: "private" })} style={{backgroundColor: 'green', color: 'white', border: 'none', padding: '5px 9px', marginRight: '4px', cursor:'pointer'}}>Privé</button>
-                  <button type="button" className={newChatData.type === "groupe" ? "active" : ""} onClick={() => setNewChatData({ ...newChatData, type: "groupe" })} style={{backgroundColor: 'green', color: 'white', border: 'none', padding: '5px 9px', marginLeft: '4px', cursor:'pointer'}}>Groupe</button>
+                <div className="type-selector">
+                  <button type="button" className={newChatData.type === "private" ? "active" : ""} onClick={() => setNewChatData({ ...newChatData, type: "private", participants: [] })}>Privé</button>
+                  <button type="button" className={newChatData.type === "groupe" ? "active" : ""} onClick={() => setNewChatData({ ...newChatData, type: "groupe", participants: [] })}>Groupe</button>
                 </div>
                 {newChatData.type === "groupe" && (
                   <div className="form-group">
                     <label>Nom du groupe</label>
-                    <input type="text" value={newChatData.name} onChange={(e) => setNewChatData({ ...newChatData, name: e.target.value })} required style={{border: '1px solid gray'}} />
+                    <input type="text" value={newChatData.name} onChange={(e) => setNewChatData({ ...newChatData, name: e.target.value })} required />
                   </div>
                 )}
+
+                {newChatData.participants.length > 0 && (
+                  <div className="selected-chips">
+                    {newChatData.participants.map((pid) => {
+                      const u = users.find((x) => x.id === pid);
+                      return (
+                        <span key={pid} className="chip" onClick={() => toggleParticipant(pid)}>
+                          {u?.username || pid.substring(0, 8)}
+                          <span className="chip-remove">×</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
                 <div className="form-group">
-                  <label>ID des participants (séparés par virgule)</label>
-                  <textarea value={newChatData.participants} onChange={(e) => setNewChatData({ ...newChatData, participants: e.target.value })} required style={{border: '1px solid gray'}}/>
+                  <label>Sélectionner des contacts</label>
+                  <div className="modal-search-wrapper">
+                    <span className="material-icons-round">search</span>
+                    <input
+                      type="text"
+                      placeholder="Rechercher un contact..."
+                      value={contactSearch}
+                      onChange={(e) => setContactSearch(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <button type="submit" className="btn-whatsapp" disabled={isCreating}>LANCER</button>
+
+                <div className="modal-contact-list">
+                  {availableContacts.length === 0 ? (
+                    <p className="modal-empty">Aucun contact trouvé</p>
+                  ) : (
+                    availableContacts.map((user) => {
+                      const isSelected = newChatData.participants.includes(user.id);
+                      return (
+                        <div
+                          key={user.id}
+                          className={`modal-contact-item ${isSelected ? "selected" : ""}`}
+                          onClick={() => {
+                            if (newChatData.type === "private") {
+                              setNewChatData({ ...newChatData, participants: isSelected ? [] : [user.id] });
+                            } else {
+                              toggleParticipant(user.id);
+                            }
+                          }}
+                        >
+                          <img
+                            src={`https://api.dicebear.com/9.x/adventurer/svg?seed=${user.username}`}
+                            alt={user.username}
+                            className="modal-contact-avatar"
+                          />
+                          <div className="modal-contact-info">
+                            <span className="modal-contact-name">{user.username}</span>
+                            {user.email && <span className="modal-contact-email">{user.email}</span>}
+                          </div>
+                          <div className={`modal-check ${isSelected ? "checked" : ""}`}>
+                            {isSelected && <span className="material-icons-round">check</span>}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn-whatsapp"
+                  disabled={isCreating || newChatData.participants.length === 0}
+                >
+                  {isCreating ? "Création..." : `Créer${newChatData.participants.length > 0 ? ` (${newChatData.participants.length})` : ""}`}
+                </button>
               </form>
             </div>
           </div>

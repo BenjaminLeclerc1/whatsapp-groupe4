@@ -13,8 +13,7 @@ export const AppProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
 
   const currentUserId = localStorage.getItem("user_id");
-  const apiUrl = "http://localhost:8080/api/v1";
-  const userApiUrl = "http://localhost:8081/api/v1";
+  const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:8080/api/v1";
 
   // Memoized Headers
   // const authHeaders = useMemo(() => {
@@ -50,7 +49,7 @@ const authHeaders = useMemo(() => {
   const fetchAllUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${userApiUrl}/users`, authHeaders);
+      const res = await axios.get(`${apiUrl}/users`, authHeaders);
       const data = res.data.users || res.data.data || res.data;
       if (Array.isArray(data)) {
         setUsers(data);
@@ -63,20 +62,35 @@ const authHeaders = useMemo(() => {
     } finally {
       setLoading(false);
     }
-  }, [authHeaders, userApiUrl]);
+  }, [authHeaders, apiUrl]);
 
   const getUserById = async (userId) => {
     try {
-      const res = await axios.get(`${userApiUrl}/users/${userId}`, authHeaders);
+      const res = await axios.get(`${apiUrl}/users/${userId}`, authHeaders);
       return res.data;
     } catch (err) {
       console.error("Get User Error:", err.message);
     }
   };
 
+  const searchUsers = useCallback(async (query) => {
+    if (!query || !query.trim()) {
+      await fetchAllUsers();
+      return;
+    }
+    try {
+      const res = await axios.get(`${apiUrl}/users/search?q=${encodeURIComponent(query.trim())}`, authHeaders);
+      const data = res.data;
+      setUsers(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Search Users Error:", err.message);
+      setUsers([]);
+    }
+  }, [authHeaders, apiUrl, fetchAllUsers]);
+
   const updateUser = async (userId, updateData) => {
     try {
-      await axios.put(`${userApiUrl}/users/${userId}`, updateData, authHeaders);
+      await axios.put(`${apiUrl}/users/${userId}`, updateData, authHeaders);
       setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, ...updateData } : u)));
       return true;
     } catch (err) {
@@ -88,7 +102,7 @@ const authHeaders = useMemo(() => {
   const deleteUser = async (userId) => {
     if (!window.confirm("Supprimer cet utilisateur définitivement ?")) return;
     try {
-      await axios.delete(`${userApiUrl}/users/${userId}`, authHeaders);
+      await axios.delete(`${apiUrl}/users/${userId}`, authHeaders);
       setUsers((prev) => prev.filter((u) => u.id !== userId));
       return true;
     } catch (err) {
@@ -250,7 +264,7 @@ const createChat = async (newChatData) => {
     if (!chatId) return [];
     setLoading(true);
     try {
-      const res = await axios.get(`http://localhost:8082/api/v1/messages/${chatId}`, authHeaders);
+      const res = await axios.get(`${apiUrl}/messages/${chatId}`, authHeaders);
       const data = res.data.messages || res.data.data || res.data;
       const historyMessages = Array.isArray(data) ? data : [];
       setMessages(historyMessages);
@@ -336,7 +350,7 @@ const markNotificationsAsRead = async (chatId) => {
       value={{
         chats, selectedChat, setSelectedChat, messages, loading, currentUserId,
         sendMessage, createChat, fetchChats, deleteMessage, fetchAllUsers,
-        getUserById, updateUser, deleteUser, users, updateChat, deleteChat,
+        getUserById, updateUser, deleteUser, users, searchUsers, updateChat, deleteChat,
         getHistory, notifications, fetchNotifications, markNotificationsAsRead,
       }}
     >
