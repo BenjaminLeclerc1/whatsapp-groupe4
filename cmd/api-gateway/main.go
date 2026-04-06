@@ -404,7 +404,14 @@ func proxyHandler(targetURL string) gin.HandlerFunc {
 			
 			// ✅ FORCE the path to match EXACTLY what the gateway got.
 			// This prevents the proxy from adding/removing slashes.
-			req.URL.Path = c.Request.URL.Path 
+			req.URL.Path = c.Request.URL.Path
+
+			// Propagate authenticated user id to downstream services.
+			if userID, exists := c.Get("user_id"); exists {
+				if uid, ok := userID.(string); ok && uid != "" {
+					req.Header.Set("X-User-ID", uid)
+				}
+			}
 		}
 		proxy.ServeHTTP(c.Writer, c.Request)
 	}
