@@ -12,6 +12,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	testChatUserID = "user-1"
+	testChatID     = "chat-1"
+	chatsPath      = "/chats"
+	chatsPathByID  = chatsPath + "/:id"
+	chatsResource  = chatsPath + "/" + testChatID
+
+	headerContentType = "Content-Type"
+	contentTypeJSON   = "application/json"
+)
+
 type handlerChatServiceStub struct {
 	createFn func(ctx context.Context, creatorID string, req CreateChatRequest) (Chat, error)
 	listFn   func(ctx context.Context, userID string) ([]Chat, error)
@@ -36,10 +47,10 @@ func TestCreateChatHandler_Success(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h := NewHandler(handlerChatServiceStub{
 		createFn: func(_ context.Context, creatorID string, _ CreateChatRequest) (Chat, error) {
-			if creatorID != "user-1" {
+			if creatorID != testChatUserID {
 				t.Fatalf("unexpected creator id: %s", creatorID)
 			}
-			return Chat{ID: "chat-1"}, nil
+			return Chat{ID: testChatID}, nil
 		},
 		listFn:   func(context.Context, string) ([]Chat, error) { return nil, nil },
 		updateFn: func(context.Context, string, string) error { return nil },
@@ -47,14 +58,14 @@ func TestCreateChatHandler_Success(t *testing.T) {
 	})
 
 	r := gin.New()
-	r.POST("/chats", func(c *gin.Context) {
-		c.Set("user_id", "user-1")
+	r.POST(chatsPath, func(c *gin.Context) {
+		c.Set("user_id", testChatUserID)
 		h.CreateChat(c)
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/chats", strings.NewReader(`{"participants":["u2"],"type":"group","name":"g1"}`))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, chatsPath, strings.NewReader(`{"participants":["u2"],"type":"group","name":"g1"}`))
+	req.Header.Set(headerContentType, contentTypeJSON)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusCreated {
@@ -72,11 +83,11 @@ func TestCreateChat_BadJSON(t *testing.T) {
 	})
 
 	r := gin.New()
-	r.POST("/chats", h.CreateChat)
+	r.POST(chatsPath, h.CreateChat)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/chats", strings.NewReader("{"))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, chatsPath, strings.NewReader("{"))
+	req.Header.Set(headerContentType, contentTypeJSON)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
@@ -94,13 +105,13 @@ func TestGetMyChats_Error(t *testing.T) {
 	})
 
 	r := gin.New()
-	r.GET("/chats", func(c *gin.Context) {
-		c.Set("user_id", "user-1")
+	r.GET(chatsPath, func(c *gin.Context) {
+		c.Set("user_id", testChatUserID)
 		h.GetMyChats(c)
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/chats", nil)
+	req := httptest.NewRequest(http.MethodGet, chatsPath, nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusInternalServerError {
@@ -114,13 +125,13 @@ func TestUpdateAndDeleteChat_Success(t *testing.T) {
 		createFn: func(context.Context, string, CreateChatRequest) (Chat, error) { return Chat{}, nil },
 		listFn:   func(context.Context, string) ([]Chat, error) { return nil, nil },
 		updateFn: func(_ context.Context, id, name string) error {
-			if id != "chat-1" || name != "new-name" {
+			if id != testChatID || name != "new-name" {
 				t.Fatalf("unexpected update payload id=%s name=%s", id, name)
 			}
 			return nil
 		},
 		deleteFn: func(_ context.Context, id string) error {
-			if id != "chat-1" {
+			if id != testChatID {
 				t.Fatalf("unexpected delete id: %s", id)
 			}
 			return nil
@@ -128,12 +139,12 @@ func TestUpdateAndDeleteChat_Success(t *testing.T) {
 	})
 
 	r := gin.New()
-	r.PUT("/chats/:id", h.UpdateChat)
-	r.DELETE("/chats/:id", h.DeleteChat)
+	r.PUT(chatsPathByID, h.UpdateChat)
+	r.DELETE(chatsPathByID, h.DeleteChat)
 
 	w1 := httptest.NewRecorder()
-	req1 := httptest.NewRequest(http.MethodPut, "/chats/chat-1", strings.NewReader(`{"name":"new-name"}`))
-	req1.Header.Set("Content-Type", "application/json")
+	req1 := httptest.NewRequest(http.MethodPut, chatsResource, strings.NewReader(`{"name":"new-name"}`))
+	req1.Header.Set(headerContentType, contentTypeJSON)
 	r.ServeHTTP(w1, req1)
 	if w1.Code != http.StatusOK {
 		t.Fatalf("expected 200 on update, got %d", w1.Code)
@@ -145,7 +156,7 @@ func TestUpdateAndDeleteChat_Success(t *testing.T) {
 	}
 
 	w2 := httptest.NewRecorder()
-	req2 := httptest.NewRequest(http.MethodDelete, "/chats/chat-1", nil)
+	req2 := httptest.NewRequest(http.MethodDelete, chatsResource, nil)
 	r.ServeHTTP(w2, req2)
 	if w2.Code != http.StatusOK {
 		t.Fatalf("expected 200 on delete, got %d", w2.Code)

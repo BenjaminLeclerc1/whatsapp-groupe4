@@ -25,7 +25,7 @@ func TestGetShard_DeterministicAndInRange(t *testing.T) {
 	}
 
 	for i := 0; i < 5; i++ {
-		if got := s.GetShard(key); got != first {
+		if s.GetShard(key) != first {
 			t.Fatal("expected deterministic shard selection for same key")
 		}
 	}

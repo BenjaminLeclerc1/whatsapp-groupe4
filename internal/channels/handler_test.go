@@ -11,7 +11,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const validChannelUUID = "123e4567-e89b-12d3-a456-426614174111"
+const (
+	validChannelUUID = "123e4567-e89b-12d3-a456-426614174111"
+
+	channelCollectionPath = "/channels"
+	channelRouteIDByID    = "/channels/:id"
+	channelPathPrefix     = "/channels/"
+	channelRouteMembers   = channelRouteIDByID + "/members"
+	channelRouteMsgs      = channelRouteIDByID + "/messages"
+
+	headerContentType    = "Content-Type"
+	contentTypeJSON      = "application/json"
+	errExpected200Format = "expected 200, got %d"
+)
 
 type channelHandlerServiceStub struct {
 	createFn      func(ctx context.Context, userID string, req CreateChannelRequest) (ChannelResponse, error)
@@ -77,13 +89,13 @@ func TestGetChannel_InvalidChannelID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h := NewHandler(baseChannelStub())
 	r := gin.New()
-	r.GET("/channels/:id", func(c *gin.Context) {
+	r.GET(channelRouteIDByID, func(c *gin.Context) {
 		c.Set("user_id", validChannelUUID)
 		h.GetChannel(c)
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/channels/bad-id", nil)
+	req := httptest.NewRequest(http.MethodGet, channelPathPrefix+"bad-id", nil)
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
@@ -94,28 +106,28 @@ func TestCreateChannel_AndDeleteChannel_Success(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h := NewHandler(baseChannelStub())
 	r := gin.New()
-	r.POST("/channels", func(c *gin.Context) {
+	r.POST(channelCollectionPath, func(c *gin.Context) {
 		c.Set("user_id", validChannelUUID)
 		h.CreateChannel(c)
 	})
-	r.DELETE("/channels/:id", func(c *gin.Context) {
+	r.DELETE(channelRouteIDByID, func(c *gin.Context) {
 		c.Set("user_id", validChannelUUID)
 		h.DeleteChannel(c)
 	})
 
 	w1 := httptest.NewRecorder()
-	req1 := httptest.NewRequest(http.MethodPost, "/channels", strings.NewReader(`{"name":"general","is_group":true}`))
-	req1.Header.Set("Content-Type", "application/json")
+	req1 := httptest.NewRequest(http.MethodPost, channelCollectionPath, strings.NewReader(`{"name":"general","is_group":true}`))
+	req1.Header.Set(headerContentType, contentTypeJSON)
 	r.ServeHTTP(w1, req1)
 	if w1.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d", w1.Code)
 	}
 
 	w2 := httptest.NewRecorder()
-	req2 := httptest.NewRequest(http.MethodDelete, "/channels/"+validChannelUUID, nil)
+	req2 := httptest.NewRequest(http.MethodDelete, channelPathPrefix+validChannelUUID, nil)
 	r.ServeHTTP(w2, req2)
 	if w2.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w2.Code)
+		t.Fatalf(errExpected200Format, w2.Code)
 	}
 }
 
@@ -127,14 +139,14 @@ func TestUpdateChannel_ServiceNotFoundMaps404(t *testing.T) {
 	}
 	h := NewHandler(stub)
 	r := gin.New()
-	r.PUT("/channels/:id", func(c *gin.Context) {
+	r.PUT(channelRouteIDByID, func(c *gin.Context) {
 		c.Set("user_id", validChannelUUID)
 		h.UpdateChannel(c)
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/channels/"+validChannelUUID, strings.NewReader(`{"name":"new"}`))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPut, channelPathPrefix+validChannelUUID, strings.NewReader(`{"name":"new"}`))
+	req.Header.Set(headerContentType, contentTypeJSON)
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
@@ -145,14 +157,14 @@ func TestAddMember_InvalidUserID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h := NewHandler(baseChannelStub())
 	r := gin.New()
-	r.POST("/channels/:id/members", func(c *gin.Context) {
+	r.POST(channelRouteMembers, func(c *gin.Context) {
 		c.Set("user_id", validChannelUUID)
 		h.AddMember(c)
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/channels/"+validChannelUUID+"/members", strings.NewReader(`{"user_id":"not-uuid"}`))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, channelPathPrefix+validChannelUUID+"/members", strings.NewReader(`{"user_id":"not-uuid"}`))
+	req.Header.Set(headerContentType, contentTypeJSON)
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
@@ -170,26 +182,26 @@ func TestListMembers_AndListMessages_Success(t *testing.T) {
 	}
 	h := NewHandler(stub)
 	r := gin.New()
-	r.GET("/channels/:id/members", func(c *gin.Context) {
+	r.GET(channelRouteMembers, func(c *gin.Context) {
 		c.Set("user_id", validChannelUUID)
 		h.ListMembers(c)
 	})
-	r.GET("/channels/:id/messages", func(c *gin.Context) {
+	r.GET(channelRouteMsgs, func(c *gin.Context) {
 		c.Set("user_id", validChannelUUID)
 		h.ListMessages(c)
 	})
 
 	w1 := httptest.NewRecorder()
-	req1 := httptest.NewRequest(http.MethodGet, "/channels/"+validChannelUUID+"/members", nil)
+	req1 := httptest.NewRequest(http.MethodGet, channelPathPrefix+validChannelUUID+"/members", nil)
 	r.ServeHTTP(w1, req1)
 	if w1.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w1.Code)
+		t.Fatalf(errExpected200Format, w1.Code)
 	}
 
 	w2 := httptest.NewRecorder()
-	req2 := httptest.NewRequest(http.MethodGet, "/channels/"+validChannelUUID+"/messages?limit=10", nil)
+	req2 := httptest.NewRequest(http.MethodGet, channelPathPrefix+validChannelUUID+"/messages?limit=10", nil)
 	r.ServeHTTP(w2, req2)
 	if w2.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w2.Code)
+		t.Fatalf(errExpected200Format, w2.Code)
 	}
 }
