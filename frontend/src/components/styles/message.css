@@ -1,0 +1,361 @@
+/* =========================================
+   VARIABLES & RESET
+   ========================================= */
+:root {
+  --wa-bg-app: #111b21;
+  --wa-bg-chat: #eae6df;
+  --wa-header-bg: #f0f2f5;
+  --wa-sidebar-bg: #ffffff;
+  --wa-green-primary: #00a884;
+  --wa-green-light: #d9fdd3;
+  --wa-white: #ffffff;
+  --wa-text-main: #111b21;
+  --wa-text-secondary: #667781;
+  --wa-border: #e9edef;
+  --wa-search-bg: #f0f2f5;
+  --wa-active-chat: #f5f6f6;
+  --wa-blue-tick: #53bdeb;
+  --wa-danger: #ea0038;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: Segoe UI, Helvetica Neue, Helvetica, Arial, sans-serif;
+  background-color: var(--wa-bg-app);
+}
+
+/* =========================================
+   LAYOUT PRINCIPAL
+   ========================================= */
+.whatsapp-app {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.whatsapp-layout {
+  width: 100%;
+  max-width: 1600px;
+  height: 100%;
+  background-color: var(--wa-sidebar-bg);
+  display: flex;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+/* =========================================
+   SIDEBAR (GAUCHE)
+   ========================================= */
+.sidebar {
+  width: 30%;
+  min-width: 350px;
+  border-right: 1px solid var(--wa-border);
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-header {
+  height: 60px;
+  padding: 10px 16px;
+  background-color: var(--wa-header-bg);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.user-avatar img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.search-container {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--wa-border);
+}
+
+.search-input-wrapper {
+  background-color: var(--wa-search-bg);
+  border-radius: 8px;
+  padding: 4px 12px;
+  display: flex;
+  align-items: center;
+}
+
+.search-input-wrapper input {
+  border: none;
+  background: transparent;
+  padding: 6px 10px;
+  width: 100%;
+  font-size: 14px;
+  outline: none;
+}
+
+.chat-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.chat-card {
+  display: flex;
+  padding: 12px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--wa-border);
+  transition: background 0.2s;
+}
+
+.chat-card:hover { background-color: var(--wa-active-chat); }
+.chat-card.active { background-color: var(--wa-active-chat); }
+
+.card-avatar {
+  width: 49px;
+  height: 49px;
+  background-color: #dfe5e7;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 15px;
+  flex-shrink: 0;
+}
+
+.card-info { flex: 1; min-width: 0; }
+.card-row { display: flex; justify-content: space-between; align-items: center; }
+
+.chat-name { font-weight: 500; color: var(--wa-text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.last-msg { font-size: 13px; color: var(--wa-text-secondary); }
+
+/* =========================================
+   ZONE DE CHAT (DROITE)
+   ========================================= */
+.chat-main {
+  flex: 1;
+  background-color: var(--wa-bg-chat);
+  position: relative;
+  min-width: 0;
+}
+
+.active-chat-window { display: flex; flex-direction: column; height: 100%; }
+
+.chat-header {
+  height: 60px;
+  background-color: var(--wa-header-bg);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--wa-border);
+  z-index: 100;
+}
+
+.header-avatar { margin-right: 15px; font-size: 24px; }
+.header-contact-info { flex: 1; }
+.header-contact-info h3 { font-size: 16px; font-weight: 500; }
+.header-contact-info p { font-size: 13px; color: var(--wa-text-secondary); }
+
+.chat-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 5%;
+  background-image: url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png");
+  background-repeat: repeat;
+  background-attachment: fixed;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Bulles de message */
+.message-row { display: flex; margin-bottom: 8px; width: 100%; }
+.message-out { justify-content: flex-end; }
+.message-in { justify-content: flex-start; }
+
+.message-bubble {
+  max-width: 65%;
+  padding: 6px 10px 8px;
+  border-radius: 7.5px;
+  box-shadow: 0 1px 1px rgba(0,0,0,0.1);
+  position: relative;
+}
+
+.message-out .message-bubble { background-color: var(--wa-green-light); border-top-right-radius: 0; }
+.message-in .message-bubble { background-color: var(--wa-white); border-top-left-radius: 0; }
+
+.message-footer { display: flex; justify-content: flex-end; align-items: center; margin-top: 4px; }
+.message-time { font-size: 11px; color: var(--wa-text-secondary); margin-right: 4px; }
+
+/* =========================================
+   INPUT AREA
+   ========================================= */
+.chat-input-area {
+  background-color: var(--wa-header-bg);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+}
+
+.input-form {
+  flex: 1;
+  display: flex;
+  background: white;
+  border-radius: 8px;
+  margin: 0 12px;
+}
+
+.input-form input {
+  flex: 1;
+  border: none;
+  padding: 10px 15px;
+  font-size: 15px;
+  outline: none;
+  background: transparent;
+}
+
+/* =========================================
+   DROPDOWN MENUS (Popup)
+   ========================================= */
+.msg-popup-menu {
+  position: absolute;
+  background: white;
+  min-width: 180px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  border-radius: 4px;
+  padding: 8px 0;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  padding: 10px 20px;
+  text-align: left;
+  border: none;
+  background: none;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.menu-item:hover { background-color: var(--wa-active-chat); }
+.menu-item.delete { color: var(--wa-danger); }
+
+/* =========================================
+   MODAL
+   ========================================= */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 20px;
+}
+
+.modal-box {
+  background: white;
+  width: 100%;
+  max-width: 450px;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+  overflow: hidden;
+  animation: modalShow 0.3s ease;
+}
+
+.modal-header {
+  padding: 16px 24px;
+  background: var(--wa-green-primary);
+  color: white;
+  display: flex;
+  justify-content: space-between;
+}
+
+.modal-form { padding: 20px; }
+.form-group { margin-bottom: 15px; }
+.form-group label { display: block; font-size: 14px; color: var(--wa-green-primary); margin-bottom: 5px; }
+.form-group input, .form-group textarea {
+  width: 100%; padding: 10px; border: none; border-bottom: 2px solid var(--wa-border); outline: none;
+}
+
+.btn-whatsapp {
+  background: var(--wa-green-primary);
+  color: white; border: none; padding: 12px; border-radius: 4px;
+  width: 100%; cursor: pointer; font-weight: 600;
+}
+
+/* =========================================
+   COMPONENTS
+   ========================================= */
+.notification-badge {
+  background-color: #25d366;
+  color: white;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: bold;
+}
+
+.icon-btn { background: none; border: none; cursor: pointer; color: #54656f; display: flex; align-items: center; }
+
+/* =========================================
+   RESPONSIVE DESIGN
+   ========================================= */
+
+/* --- TABLETTE (Laptops moyens & iPads) --- */
+@media (max-width: 1024px) {
+  .whatsapp-app { padding: 0; }
+  .whatsapp-layout { height: 100vh; max-width: 100%; box-shadow: none; }
+  .sidebar { width: 35%; }
+}
+
+/* --- MOBILE (Smartphones) --- */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 100%;
+    position: absolute;
+    height: 100%;
+    z-index: 50;
+    /* Cache la sidebar si un chat est sélectionné sur mobile */
+    display: none; 
+  }
+
+  /* Si aucune discussion n'est sélectionnée, on montre la sidebar */
+  .whatsapp-layout:not(:has(.active-chat-window)) .sidebar {
+    display: flex;
+  }
+
+  .chat-main {
+    width: 100%;
+    display: none;
+  }
+
+  /* Si une discussion est sélectionnée, on montre le chat */
+  .whatsapp-layout:has(.active-chat-window) .chat-main {
+    display: block;
+  }
+
+  .message-bubble { max-width: 85%; }
+  .chat-body { padding: 15px 3%; }
+  
+  .whatsapp-welcome { display: none; } /* On ne montre pas l'écran de bienvenue sur mobile */
+}
+
+/* --- PETITS MOBILES --- */
+@media (max-width: 480px) {
+  .chat-header { padding: 5px 10px; }
+  .modal-box { width: 100%; }
+}
+
+/* --- ANIMATIONS --- */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modalShow {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}

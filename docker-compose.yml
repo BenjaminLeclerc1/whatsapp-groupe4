@@ -70,7 +70,8 @@ services:
       - PRESENCE_SERVICE_URL=http://presence-service:8086
       - SEARCH_SERVICE_URL=http://search-service:8087
       - CHAT_SERVICE_URL=http://chat-service:8088  # <--- Added this!
-      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env - see .env.example}
+      # - JWT_SECRET=${JWT_SECRET:-whatsapp-groupe4-secret-default}
+      - JWT_SECRET=whatsapp-groupe4-secret-default
     depends_on:
       auth-service: { condition: service_started }
       chat-service: { condition: service_started }
@@ -86,9 +87,10 @@ services:
       - "8084:8084" 
     environment:
       - PORT=8084
-      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_shard_0:5432/whatsapp_shard_0?sslmode=disable
-      - REDIS_ADDR=redis:6379
-      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env - see .env.example}
+      - DATABASE_URL=postgres://whatsapp:whatsapp_secret@whatsapp-shard-0:5432/whatsapp_shard_0?sslmode=disable
+      - REDIS_ADDR=whatsapp-redis:6379
+      # - JWT_SECRET=${JWT_SECRET:-whatsapp-groupe4-secret-default}
+      - JWT_SECRET=whatsapp-groupe4-secret-default
     depends_on:
       postgres_shard_0: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -104,8 +106,9 @@ services:
       - "8088:8088"
     environment:
       - PORT=8088
-      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_shard_0:5432/whatsapp_shard_0?sslmode=disable
-      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env - see .env.example}
+      - DATABASE_URL=postgres://whatsapp:whatsapp_secret@whatsapp-shard-0:5432/whatsapp_shard_0?sslmode=disable
+      # - JWT_SECRET=${JWT_SECRET:-whatsapp-groupe4-secret-default}
+      - JWT_SECRET=whatsapp-groupe4-secret-default
     depends_on:
       postgres_shard_0: { condition: service_healthy }
     networks:
@@ -119,9 +122,9 @@ services:
       - "8081:8081"
     environment:
       - PORT=8081
-      - REDIS_ADDR=redis:6379
-      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env - see .env.example}
-      - SHARD_URLS=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_shard_0:5432/whatsapp_shard_0?sslmode=disable,postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_shard_1:5432/whatsapp_shard_1?sslmode=disable
+      - REDIS_ADDR=whatsapp-redis:6379
+      - SHARD_URLS=postgres://whatsapp:whatsapp_secret@whatsapp-shard-0:5432/whatsapp_shard_0?sslmode=disable,postgres://whatsapp:whatsapp_secret@whatsapp-shard-1:5432/whatsapp_shard_1?sslmode=disable
+      - JWT_SECRET=whatsapp-groupe4-secret-default
     depends_on:
       postgres_shard_0: { condition: service_healthy }
       postgres_shard_1: { condition: service_healthy }
@@ -137,13 +140,30 @@ services:
       - "8082:8082"
     environment:
       - PORT=8082
-      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres_shard_1:5432/whatsapp_shard_1?sslmode=disable
+      - DATABASE_URL=postgres://whatsapp:whatsapp_secret@whatsapp-shard-1:5432/whatsapp_shard_1?sslmode=disable
+      - JWT_SECRET=whatsapp-groupe4-secret-default
     depends_on:
       postgres_shard_1: { condition: service_healthy }
     networks:
       - whatsapp-network
 
-  # (Remaining services like notification, presence, search follow the same pattern...)
+
+  notification-service:
+      build:
+        context: .
+        dockerfile: ./cmd/notification-service/Dockerfile
+      container_name: notification-service
+      ports:
+        - "8083:8083"
+      environment:
+        - PORT=8083
+        - DATABASE_URL=postgres://whatsapp:whatsapp_secret@whatsapp-shard-0:5432/whatsapp_shard_0?sslmode=disable
+        - JWT_SECRET=whatsapp-groupe4-secret-default
+      depends_on:
+        postgres_shard_0: { condition: service_healthy }
+      networks:
+        - whatsapp-network
+    # (Remaining services like notification, presence, search follow the same pattern...)
 
 networks:
   whatsapp-network:

@@ -8,6 +8,9 @@ import (
 type Repository interface {
 	Create(ctx context.Context, chat Chat) error
 	FindByUser(ctx context.Context, userID string) ([]Chat, error)
+
+	UpdateName(ctx context.Context, id string, name string) error // <--- NOUVEAU
+    Delete(ctx context.Context, id string) error                 // <--- NOUVEAU
 }
 
 type repository struct {
@@ -43,4 +46,19 @@ func (r *repository) FindByUser(ctx context.Context, userID string) ([]Chat, err
 		chats = append(chats, c)
 	}
 	return chats, nil
+}
+
+
+// Implémentation de UpdateName
+func (r *repository) UpdateName(ctx context.Context, id string, name string) error {
+    query := `UPDATE chats SET name = $1 WHERE id = $2`
+    _, err := r.db.Exec(ctx, query, name, id)
+    return err
+}
+
+// Implémentation de Delete
+func (r *repository) Delete(ctx context.Context, id string) error {
+    query := `DELETE FROM chats WHERE id = $1`
+    _, err := r.db.Exec(ctx, query, id)
+    return err
 }

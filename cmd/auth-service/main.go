@@ -47,6 +47,13 @@ func main() {
 	databaseURL := requireEnv("DATABASE_URL")
 	jwtSecret := requireEnv("JWT_SECRET")
 	port := getEnv("PORT", "8084")
+	router := gin.Default()
+
+	port := getEnv("PORT", "8084")
+	// jwtSecret := requireEnv("JWT_SECRET")
+	// In auth-service/main.go
+jwtSecret := requireEnv("JWT_SECRET")
+log.Printf("DEBUG: Auth-Service using Secret: %s", jwtSecret)
 	accessTokenTTL := getEnvDuration("ACCESS_TOKEN_TTL", 24*time.Hour)
 	refreshTokenTTL := getEnvDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour)
 

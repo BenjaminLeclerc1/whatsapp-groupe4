@@ -9,6 +9,9 @@ import (
 type Service interface {
 	CreateChat(ctx context.Context, creatorID string, req CreateChatRequest) (Chat, error)
 	GetMyChats(ctx context.Context, userID string) ([]Chat, error)
+
+	UpdateChat(ctx context.Context, id string, name string) error // <--- NOUVEAU
+    DeleteChat(ctx context.Context, id string) error  // <--- NOUVEAU
 }
 
 type service struct {
@@ -40,4 +43,15 @@ func (s *service) CreateChat(ctx context.Context, creatorID string, req CreateCh
 
 func (s *service) GetMyChats(ctx context.Context, userID string) ([]Chat, error) {
 	return s.repo.FindByUser(ctx, userID)
+}
+
+
+// Implémentation de UpdateChat
+func (s *service) UpdateChat(ctx context.Context, id string, name string) error {
+    return s.repo.UpdateName(ctx, id, name)
+}
+
+// Implémentation de DeleteChat
+func (s *service) DeleteChat(ctx context.Context, id string) error {
+    return s.repo.Delete(ctx, id)
 }

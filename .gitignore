@@ -1,4 +1,6 @@
 # Binaires
+node_modules
+.env
 bin/
 *.exe
 *.exe~

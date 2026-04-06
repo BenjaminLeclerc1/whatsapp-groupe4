@@ -49,24 +49,30 @@ func main() {
 	// }
 
 	// 3. Routes
-	r := gin.Default()
+  r := gin.Default()
 
-	// 🛑 CRITICAL FOR DOCKER: Stop Gin from redirecting to internal hostnames
-	r.RedirectTrailingSlash = false
-	r.RedirectFixedPath = false
+    // 🛑 CRITICAL FOR DOCKER: Stop Gin from redirecting to internal hostnames
+    r.RedirectTrailingSlash = false
+    r.RedirectFixedPath = false
 
-	api := r.Group("/api/v1/chats")
-	{
-		api.Use(middleware.ExtractUserID())
+    api := r.Group("/api/v1/chats")
+    {
+        api.Use(middleware.ExtractUserID())
 
-		// ✅ Handle both so Gin never feels the need to redirect
-		api.GET("", handler.GetMyChats)  // matches /api/v1/chats
-		api.GET("/", handler.GetMyChats) // matches /api/v1/chats/
+        // ✅ Handle both so Gin never feels the need to redirect
+        api.GET("", handler.GetMyChats)  // matches /api/v1/chats
+        api.GET("/", handler.GetMyChats) // matches /api/v1/chats/
+        
+        api.POST("", handler.CreateChat)
+        api.POST("/", handler.CreateChat)
 
-		api.POST("", handler.CreateChat)
-		api.POST("/", handler.CreateChat)
-	}
-	r.Run(":8088")
+
+		// --- NOUVELLES ROUTES ---
+    // Ces routes capturent l'ID après /chats/
+    api.PUT("/:id", handler.UpdateChat)    // Pour modifier (ex: /api/v1/chats/123)
+    api.DELETE("/:id", handler.DeleteChat) // Pour supprimer (ex: /api/v1/chats/123)
+    }
+    r.Run(":8088")
 }
 
 func initDB(databaseURL string) (*pgxpool.Pool, error) {
