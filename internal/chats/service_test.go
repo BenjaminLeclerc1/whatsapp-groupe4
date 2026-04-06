@@ -7,6 +7,12 @@ import (
 	"time"
 )
 
+const (
+	chatUser1            = "user-1"
+	chatUser2            = "user-2"
+	chatsUnexpectedErr   = "unexpected error: %v"
+)
+
 // ─── Mock Repository ──────────────────────────────────────────────────────────
 
 type mockRepo struct {
@@ -30,11 +36,11 @@ func TestCreateChat_Success(t *testing.T) {
 	svc := NewService(repo)
 
 	chat, err := svc.CreateChat(context.Background(), "creator-1", CreateChatRequest{
-		Participants: []string{"user-2"},
+		Participants: []string{chatUser2},
 		Type:         "private",
 	})
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(chatsUnexpectedErr, err)
 	}
 	if chat.ID == "" {
 		t.Error("expected non-empty chat ID")
@@ -55,11 +61,11 @@ func TestCreateChat_CreatorAddedToParticipants(t *testing.T) {
 	svc := NewService(repo)
 
 	_, err := svc.CreateChat(context.Background(), "creator-99", CreateChatRequest{
-		Participants: []string{"user-1", "user-2"},
+		Participants: []string{chatUser1, chatUser2},
 		Type:         "group",
 	})
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(chatsUnexpectedErr, err)
 	}
 
 	found := false
@@ -84,7 +90,7 @@ func TestCreateChat_RepoError(t *testing.T) {
 	svc := NewService(repo)
 
 	_, err := svc.CreateChat(context.Background(), "creator-1", CreateChatRequest{
-		Participants: []string{"user-2"},
+		Participants: []string{chatUser2},
 		Type:         "private",
 	})
 	if err == nil {
@@ -138,7 +144,7 @@ func TestGetMyChats_Success(t *testing.T) {
 
 	chats, err := svc.GetMyChats(context.Background(), "user-1")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(chatsUnexpectedErr, err)
 	}
 	if len(chats) != 2 {
 		t.Errorf("expected 2 chats, got %d", len(chats))
@@ -153,7 +159,7 @@ func TestGetMyChats_Empty(t *testing.T) {
 
 	chats, err := svc.GetMyChats(context.Background(), "user-lonely")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(chatsUnexpectedErr, err)
 	}
 	if len(chats) != 0 {
 		t.Errorf("expected 0 chats, got %d", len(chats))
@@ -168,7 +174,7 @@ func TestGetMyChats_RepoError(t *testing.T) {
 	}
 	svc := NewService(repo)
 
-	_, err := svc.GetMyChats(context.Background(), "user-1")
+	_, err := svc.GetMyChats(context.Background(), chatUser1)
 	if err == nil {
 		t.Error("expected error from repo")
 	}

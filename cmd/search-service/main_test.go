@@ -14,6 +14,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	searchIndexPath   = "/api/v1/search/index"
+	searchIndexBase   = "/api/v1/search/index/"
+	contentTypeHeader = "Content-Type"
+	jsonType          = "application/json"
+	expected200Fmt    = "expected 200, got %d"
+)
+
 func init() {
 	gin.SetMode(gin.TestMode)
 }
@@ -223,13 +231,13 @@ func TestIndexMessage_MissingID(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]string{"content": "hello"})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/search/index", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, searchIndexPath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonType)
 	r.ServeHTTP(w, req)
 
 	// Sans ID, l'index crée quand même le message (ID vide) → 200
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 }
 
@@ -240,12 +248,12 @@ func TestIndexMessage_Valid(t *testing.T) {
 	msg := Message{ID: "idx-1", Content: "bonjour le monde", ChatID: "c1", SenderID: "u1"}
 	body, _ := json.Marshal(msg)
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/search/index", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, searchIndexPath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
@@ -262,12 +270,12 @@ func TestIndexMessage_SetsCreatedAt(t *testing.T) {
 	msg := map[string]string{"id": "idx-ts", "content": "timestamp test", "sender_id": "u1", "chat_id": "c1"}
 	body, _ := json.Marshal(msg)
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/search/index", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, searchIndexPath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 }
 
@@ -275,8 +283,8 @@ func TestIndexMessage_InvalidJSON(t *testing.T) {
 	clearSearchIndex()
 	r := setupSearchRouter()
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/search/index", bytes.NewBufferString(`{broken`))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, searchIndexPath, bytes.NewBufferString(`{broken`))
+	req.Header.Set(contentTypeHeader, jsonType)
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
@@ -328,11 +336,11 @@ func TestIndexMessage_DeduplicatesInvertedIndexPerWord(t *testing.T) {
 	msg := Message{ID: "dup-1", Content: "same same", ChatID: "c", SenderID: "u"}
 	body, _ := json.Marshal(msg)
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/search/index", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, searchIndexPath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonType)
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
+		t.Fatalf(expected200Fmt, w.Code)
 	}
 	mu.RLock()
 	n := len(invertedIndex["same"])
@@ -365,7 +373,7 @@ func TestSearchMessages_NoResults(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
@@ -388,7 +396,7 @@ func TestSearchMessages_WithResults(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
@@ -413,7 +421,7 @@ func TestSearchInChat(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 }
 
@@ -426,7 +434,7 @@ func TestSearchInChat_NoMatch(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 }
 
@@ -446,7 +454,7 @@ func TestSearchByUser(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 }
 
@@ -457,7 +465,7 @@ func TestRemoveFromIndex_NotFound(t *testing.T) {
 	r := setupSearchRouter()
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/search/index/nonexistent", nil)
+	req := httptest.NewRequest(http.MethodDelete, searchIndexBase+"nonexistent", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusNotFound {
@@ -475,11 +483,11 @@ func TestRemoveFromIndex_Found(t *testing.T) {
 
 	r := setupSearchRouter()
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/search/index/del-1", nil)
+	req := httptest.NewRequest(http.MethodDelete, searchIndexBase+"del-1", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 }
 
@@ -494,7 +502,7 @@ func TestGetSearchStats_Empty(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
@@ -513,7 +521,7 @@ func TestSearchInitDB_InvalidURL(t *testing.T) {
 }
 
 func TestSearchInitDB_ValidFormat(t *testing.T) {
-	pool, err := initDB("postgres://user:pass@127.0.0.1:1/db?sslmode=disable")
+	pool, err := initDB("postgres://127.0.0.1:1/db?sslmode=disable")
 	if pool != nil {
 		pool.Close()
 	}
@@ -542,7 +550,7 @@ func TestGetSearchStats_AfterIndex(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
@@ -573,7 +581,7 @@ func TestNewSearchRouter_HealthConnected(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/health", nil))
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
+		t.Fatalf(expected200Fmt, w.Code)
 	}
 }
 

@@ -12,6 +12,21 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	presenceUser1          = "user-1"
+	presenceKnown1         = "known-1"
+	presenceExistingUser   = "existing-user"
+	presenceExistingTyper  = "existing-typer"
+	presenceBulkPath       = "/api/v1/presence/bulk"
+	presenceUpdatePath     = "/api/v1/presence/update"
+	presenceOfflinePath    = "/api/v1/presence/offline"
+	presenceTypingPath     = "/api/v1/presence/typing"
+	contentTypeHeader      = "Content-Type"
+	jsonContentType        = "application/json"
+	expected200Fmt         = "expected 200, got %d"
+	expected400Fmt         = "expected 400, got %d"
+)
+
 func init() {
 	gin.SetMode(gin.TestMode)
 }
@@ -108,8 +123,8 @@ func TestGetUserPresence_Found(t *testing.T) {
 	clearPresences()
 	now := time.Now()
 	mu.Lock()
-	presences["user-1"] = Presence{
-		UserID:       "user-1",
+	presences[presenceUser1] = Presence{
+		UserID:       presenceUser1,
 		Status:       StatusOnline,
 		LastActivity: now,
 		LastSeen:     now,
@@ -118,16 +133,16 @@ func TestGetUserPresence_Found(t *testing.T) {
 
 	r := setupPresenceRouter()
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/presence/user-1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/presence/"+presenceUser1, nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 	var resp Presence
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp.UserID != "user-1" {
-		t.Errorf("expected user-1, got %s", resp.UserID)
+	if resp.UserID != presenceUser1 {
+		t.Errorf("expected %s, got %s", presenceUser1, resp.UserID)
 	}
 }
 
@@ -149,7 +164,7 @@ func TestGetUserPresence_AutoOffline(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 	var resp Presence
 	json.Unmarshal(w.Body.Bytes(), &resp)
@@ -165,12 +180,12 @@ func TestGetBulkPresence_MissingBody(t *testing.T) {
 	r := setupPresenceRouter()
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/presence/bulk", bytes.NewBufferString(`{}`))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodGet, presenceBulkPath, bytes.NewBufferString(`{}`))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", w.Code)
+		t.Errorf(expected400Fmt, w.Code)
 	}
 }
 
@@ -180,12 +195,12 @@ func TestGetBulkPresence_UnknownUsers(t *testing.T) {
 
 	body, _ := json.Marshal(map[string][]string{"user_ids": {"u1", "u2"}})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/presence/bulk", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodGet, presenceBulkPath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
@@ -198,18 +213,18 @@ func TestGetBulkPresence_KnownUsers(t *testing.T) {
 	clearPresences()
 	now := time.Now()
 	mu.Lock()
-	presences["known-1"] = Presence{UserID: "known-1", Status: StatusOnline, LastActivity: now, LastSeen: now}
+	presences[presenceKnown1] = Presence{UserID: presenceKnown1, Status: StatusOnline, LastActivity: now, LastSeen: now}
 	mu.Unlock()
 
 	r := setupPresenceRouter()
-	body, _ := json.Marshal(map[string][]string{"user_ids": {"known-1", "unknown-2"}})
+	body, _ := json.Marshal(map[string][]string{"user_ids": {presenceKnown1, "unknown-2"}})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/presence/bulk", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodGet, presenceBulkPath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 }
 
@@ -219,12 +234,12 @@ func TestUpdatePresence_MissingFields(t *testing.T) {
 	r := setupPresenceRouter()
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/presence/update", bytes.NewBufferString(`{}`))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, presenceUpdatePath, bytes.NewBufferString(`{}`))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", w.Code)
+		t.Errorf(expected400Fmt, w.Code)
 	}
 }
 
@@ -233,8 +248,8 @@ func TestUpdatePresence_InvalidStatus(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]string{"user_id": "u1", "status": "invisible"})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/presence/update", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, presenceUpdatePath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
@@ -248,12 +263,12 @@ func TestUpdatePresence_Online(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]string{"user_id": "u1", "status": "online"})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/presence/update", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, presenceUpdatePath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 }
 
@@ -263,12 +278,12 @@ func TestUpdatePresence_Offline(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]string{"user_id": "u2", "status": "offline"})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/presence/update", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, presenceUpdatePath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 }
 
@@ -278,12 +293,12 @@ func TestUpdatePresence_Typing(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]string{"user_id": "u3", "status": "typing", "chat_id": "chat-1"})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/presence/update", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, presenceUpdatePath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 }
 
@@ -294,11 +309,11 @@ func TestSetOnlineStatus_MissingFields(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/presence/online", bytes.NewBufferString(`{}`))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", w.Code)
+		t.Errorf(expected400Fmt, w.Code)
 	}
 }
 
@@ -309,11 +324,11 @@ func TestSetOnlineStatus_Valid(t *testing.T) {
 	body, _ := json.Marshal(map[string]string{"user_id": "user-online"})
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/presence/online", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 
 	var resp Presence
@@ -329,12 +344,12 @@ func TestSetOfflineStatus_MissingFields(t *testing.T) {
 	r := setupPresenceRouter()
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/presence/offline", bytes.NewBufferString(`{}`))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, presenceOfflinePath, bytes.NewBufferString(`{}`))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", w.Code)
+		t.Errorf(expected400Fmt, w.Code)
 	}
 }
 
@@ -344,12 +359,12 @@ func TestSetOfflineStatus_NewUser(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]string{"user_id": "new-offline-user"})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/presence/offline", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, presenceOfflinePath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 	var resp Presence
 	json.Unmarshal(w.Body.Bytes(), &resp)
@@ -362,18 +377,18 @@ func TestSetOfflineStatus_ExistingUser(t *testing.T) {
 	clearPresences()
 	now := time.Now()
 	mu.Lock()
-	presences["existing-user"] = Presence{UserID: "existing-user", Status: StatusOnline, LastActivity: now, LastSeen: now}
+	presences[presenceExistingUser] = Presence{UserID: presenceExistingUser, Status: StatusOnline, LastActivity: now, LastSeen: now}
 	mu.Unlock()
 
 	r := setupPresenceRouter()
-	body, _ := json.Marshal(map[string]string{"user_id": "existing-user"})
+	body, _ := json.Marshal(map[string]string{"user_id": presenceExistingUser})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/presence/offline", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, presenceOfflinePath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 	var resp Presence
 	json.Unmarshal(w.Body.Bytes(), &resp)
@@ -388,12 +403,12 @@ func TestSetTypingStatus_MissingFields(t *testing.T) {
 	r := setupPresenceRouter()
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/presence/typing", bytes.NewBufferString(`{}`))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, presenceTypingPath, bytes.NewBufferString(`{}`))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", w.Code)
+		t.Errorf(expected400Fmt, w.Code)
 	}
 }
 
@@ -407,12 +422,12 @@ func TestSetTypingStatus_TypingTrue(t *testing.T) {
 		"typing":  true,
 	})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/presence/typing", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, presenceTypingPath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 	var resp Presence
 	json.Unmarshal(w.Body.Bytes(), &resp)
@@ -425,21 +440,21 @@ func TestSetTypingStatus_ExistingUserTypingTrue(t *testing.T) {
 	clearPresences()
 	now := time.Now()
 	mu.Lock()
-	presences["existing-typer"] = Presence{UserID: "existing-typer", Status: StatusOnline, LastActivity: now, LastSeen: now}
+	presences[presenceExistingTyper] = Presence{UserID: presenceExistingTyper, Status: StatusOnline, LastActivity: now, LastSeen: now}
 	mu.Unlock()
 
 	r := setupPresenceRouter()
 	body, _ := json.Marshal(map[string]interface{}{
-		"user_id": "existing-typer",
+		"user_id": presenceExistingTyper,
 		"chat_id": "chat-xyz",
 		"typing":  true,
 	})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/presence/typing", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, presenceTypingPath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 }

@@ -14,6 +14,20 @@ import (
 	"github.com/whatsapp-groupe4/internal/sharding"
 )
 
+const (
+	registerPath      = "/register"
+	loginPath         = "/login"
+	usersPath         = "/users"
+	usersByIDPath     = "/users/:id"
+	usersUser1Path    = "/users/user-1"
+	contentTypeHeader = "Content-Type"
+	jsonContentType   = "application/json"
+	expected200Fmt    = "expected 200, got %d"
+	expected400Fmt    = "expected 400, got %d"
+	aliceTestEmail    = "alice@test.com"
+	jwtTestKey        = "unit-test-jwt-key"
+)
+
 func init() {
 	gin.SetMode(gin.TestMode)
 }
@@ -118,7 +132,7 @@ func TestNewUserRouter_Logout(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/users/logout", nil)
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 }
 
@@ -134,7 +148,7 @@ func TestLogout(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 	var resp map[string]string
 	json.Unmarshal(w.Body.Bytes(), &resp)
@@ -148,11 +162,11 @@ func TestLogout(t *testing.T) {
 func TestRegister_EmptyBody(t *testing.T) {
 	app := &App{}
 	r := gin.New()
-	r.POST("/register", app.register)
+	r.POST(registerPath, app.register)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(`{}`))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, registerPath, bytes.NewBufferString(`{}`))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
@@ -163,12 +177,12 @@ func TestRegister_EmptyBody(t *testing.T) {
 func TestRegister_MissingEmail(t *testing.T) {
 	app := &App{}
 	r := gin.New()
-	r.POST("/register", app.register)
+	r.POST(registerPath, app.register)
 
 	body, _ := json.Marshal(map[string]string{"username": "alice", "telephone": "0601020304"})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/register", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, registerPath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
@@ -179,12 +193,12 @@ func TestRegister_MissingEmail(t *testing.T) {
 func TestRegister_MissingUsername(t *testing.T) {
 	app := &App{}
 	r := gin.New()
-	r.POST("/register", app.register)
+	r.POST(registerPath, app.register)
 
 	body, _ := json.Marshal(map[string]string{"email": "a@b.com", "telephone": "0601020304"})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/register", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, registerPath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
@@ -197,43 +211,43 @@ func TestRegister_MissingUsername(t *testing.T) {
 func TestLogin_MissingCredentials(t *testing.T) {
 	app := &App{}
 	r := gin.New()
-	r.POST("/login", app.login)
+	r.POST(loginPath, app.login)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBufferString(`{}`))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, loginPath, bytes.NewBufferString(`{}`))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", w.Code)
+		t.Errorf(expected400Fmt, w.Code)
 	}
 }
 
 func TestLogin_InvalidEmail(t *testing.T) {
 	app := &App{}
 	r := gin.New()
-	r.POST("/login", app.login)
+	r.POST(loginPath, app.login)
 
 	body, _ := json.Marshal(map[string]string{"email": "notvalid", "password": "pass"})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, loginPath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", w.Code)
+		t.Errorf(expected400Fmt, w.Code)
 	}
 }
 
 func TestLogin_InvalidEmailFormat(t *testing.T) {
 	app := &App{}
 	r := gin.New()
-	r.POST("/login", app.login)
+	r.POST(loginPath, app.login)
 
 	body, _ := json.Marshal(map[string]string{"email": "bademail", "password": "password123"})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, loginPath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
@@ -244,16 +258,16 @@ func TestLogin_InvalidEmailFormat(t *testing.T) {
 func TestLogin_MissingPassword(t *testing.T) {
 	app := &App{}
 	r := gin.New()
-	r.POST("/login", app.login)
+	r.POST(loginPath, app.login)
 
-	body, _ := json.Marshal(map[string]string{"email": "alice@test.com"})
+	body, _ := json.Marshal(map[string]string{"email": aliceTestEmail})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, loginPath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", w.Code)
+		t.Errorf(expected400Fmt, w.Code)
 	}
 }
 
@@ -263,7 +277,7 @@ func TestLogin_MissingPassword(t *testing.T) {
 func emptyApp() *App {
 	return &App{
 		Shards:    &sharding.ShardManager{Shards: []*pgxpool.Pool{}},
-		JWTSecret: "test-secret",
+		JWTSecret: jwtTestKey,
 	}
 }
 
@@ -272,13 +286,13 @@ func emptyApp() *App {
 // Cela couvre les corps de boucles et les lignes après GetShard.
 func fakePoolApp(t *testing.T) *App {
 	t.Helper()
-	pool, err := pgxpool.New(context.Background(), "postgres://u:p@127.0.0.1:1/db?sslmode=disable&connect_timeout=1")
+	pool, err := pgxpool.New(context.Background(), "postgres://127.0.0.1:1/db?sslmode=disable&connect_timeout=1")
 	if err != nil {
 		t.Skip("pgxpool.New failed:", err)
 	}
 	return &App{
 		Shards:    &sharding.ShardManager{Shards: []*pgxpool.Pool{pool}},
-		JWTSecret: "test-secret",
+		JWTSecret: jwtTestKey,
 	}
 }
 
@@ -287,12 +301,12 @@ func fakePoolApp(t *testing.T) *App {
 func TestRunMigrations_NoQueryParam(t *testing.T) {
 	// migrate.New échoue (chemin fichier inexistant) → continue
 	// Couvre: for range, targetURL = url, if strings.Contains (false), else branch, migrate.New, if err, continue
-	runMigrations([]string{"postgres://u:p@127.0.0.1:1/db"})
+	runMigrations([]string{"postgres://127.0.0.1:1/db"})
 }
 
 func TestRunMigrations_WithQueryParam(t *testing.T) {
 	// Couvre la branche if strings.Contains (true) → targetURL += "&..."
-	runMigrations([]string{"postgres://u:p@127.0.0.1:1/db?sslmode=disable"})
+	runMigrations([]string{"postgres://127.0.0.1:1/db?sslmode=disable"})
 }
 
 func TestRunMigrations_Empty(t *testing.T) {
@@ -305,14 +319,14 @@ func TestRunMigrations_Empty(t *testing.T) {
 func TestLogin_EmptyShards_NotFound(t *testing.T) {
 	app := emptyApp()
 	r := gin.New()
-	r.POST("/login", app.login)
+	r.POST(loginPath, app.login)
 
 	body, _ := json.Marshal(map[string]string{
-		"email": "alice@test.com", "password": "password123",
+		"email": aliceTestEmail, "password": "password123",
 	})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, loginPath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusUnauthorized {
@@ -323,12 +337,12 @@ func TestLogin_EmptyShards_NotFound(t *testing.T) {
 func TestLogin_InvalidEmailFormat_EmptyShards(t *testing.T) {
 	app := emptyApp()
 	r := gin.New()
-	r.POST("/login", app.login)
+	r.POST(loginPath, app.login)
 
 	body, _ := json.Marshal(map[string]string{"email": "not-an-email", "password": "pass"})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, loginPath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
@@ -348,7 +362,7 @@ func TestSearchUsers_EmptyShards(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 }
 
@@ -357,10 +371,10 @@ func TestSearchUsers_EmptyShards(t *testing.T) {
 func TestGetAllUsers_EmptyShards(t *testing.T) {
 	app := emptyApp()
 	r := gin.New()
-	r.GET("/users", app.getAllUsers)
+	r.GET(usersPath, app.getAllUsers)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/users", nil)
+	req := httptest.NewRequest(http.MethodGet, usersPath, nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -374,14 +388,14 @@ func TestGetAllUsers_EmptyShards(t *testing.T) {
 func TestRegister_EmptyShards_CoversPrePanic(t *testing.T) {
 	app := emptyApp()
 	r := gin.Default() // Recovery attrape la panique GetShard
-	r.POST("/register", app.register)
+	r.POST(registerPath, app.register)
 
 	body, _ := json.Marshal(map[string]string{
-		"username": "alice", "telephone": "0601020304", "email": "alice@test.com", "password": "pass",
+		"username": "alice", "telephone": "0601020304", "email": aliceTestEmail, "password": "pass",
 	})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/register", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, registerPath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 	// bcrypt, uuid, time.Now, status/role sont couverts avant la panique
 }
@@ -391,10 +405,10 @@ func TestRegister_EmptyShards_CoversPrePanic(t *testing.T) {
 func TestGetUserByID_EmptyShards(t *testing.T) {
 	app := emptyApp()
 	r := gin.Default()
-	r.GET("/users/:id", app.getUserByID)
+	r.GET(usersByIDPath, app.getUserByID)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/users/user-1", nil)
+	req := httptest.NewRequest(http.MethodGet, usersUser1Path, nil)
 	r.ServeHTTP(w, req)
 }
 
@@ -403,12 +417,12 @@ func TestGetUserByID_EmptyShards(t *testing.T) {
 func TestUpdateUser_EmptyShards(t *testing.T) {
 	app := emptyApp()
 	r := gin.Default()
-	r.PUT("/users/:id", app.updateUser)
+	r.PUT(usersByIDPath, app.updateUser)
 
 	body, _ := json.Marshal(map[string]string{})
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPut, "/users/test-id", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 }
 
@@ -417,10 +431,10 @@ func TestUpdateUser_EmptyShards(t *testing.T) {
 func TestDeleteUser_EmptyShards(t *testing.T) {
 	app := emptyApp()
 	r := gin.Default()
-	r.DELETE("/users/:id", app.deleteUser)
+	r.DELETE(usersByIDPath, app.deleteUser)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodDelete, "/users/user-1", nil)
+	req := httptest.NewRequest(http.MethodDelete, usersUser1Path, nil)
 	r.ServeHTTP(w, req)
 }
 
@@ -430,12 +444,12 @@ func TestDeleteUser_EmptyShards(t *testing.T) {
 func TestLogin_FakePool_LoopBody(t *testing.T) {
 	app := fakePoolApp(t)
 	r := gin.New()
-	r.POST("/login", app.login)
+	r.POST(loginPath, app.login)
 
-	body, _ := json.Marshal(map[string]string{"email": "alice@test.com", "password": "pass123"})
+	body, _ := json.Marshal(map[string]string{"email": aliceTestEmail, "password": "pass123"})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, loginPath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusUnauthorized {
@@ -460,10 +474,10 @@ func TestSearchUsers_FakePool_LoopBody(t *testing.T) {
 func TestGetAllUsers_FakePool_LoopBody(t *testing.T) {
 	app := fakePoolApp(t)
 	r := gin.New()
-	r.GET("/users", app.getAllUsers)
+	r.GET(usersPath, app.getAllUsers)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/users", nil)
+	req := httptest.NewRequest(http.MethodGet, usersPath, nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -474,10 +488,10 @@ func TestGetAllUsers_FakePool_LoopBody(t *testing.T) {
 func TestGetUserByID_FakePool_AfterGetShard(t *testing.T) {
 	app := fakePoolApp(t)
 	r := gin.New()
-	r.GET("/users/:id", app.getUserByID)
+	r.GET(usersByIDPath, app.getUserByID)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/users/user-1", nil)
+	req := httptest.NewRequest(http.MethodGet, usersUser1Path, nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusNotFound {
@@ -488,12 +502,12 @@ func TestGetUserByID_FakePool_AfterGetShard(t *testing.T) {
 func TestUpdateUser_FakePool_AfterGetShard(t *testing.T) {
 	app := fakePoolApp(t)
 	r := gin.New()
-	r.PUT("/users/:id", app.updateUser)
+	r.PUT(usersByIDPath, app.updateUser)
 
 	body, _ := json.Marshal(map[string]string{"username": "bob"})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/users/user-1", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPut, usersUser1Path, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -504,10 +518,10 @@ func TestUpdateUser_FakePool_AfterGetShard(t *testing.T) {
 func TestDeleteUser_FakePool_AfterGetShard(t *testing.T) {
 	app := fakePoolApp(t)
 	r := gin.New()
-	r.DELETE("/users/:id", app.deleteUser)
+	r.DELETE(usersByIDPath, app.deleteUser)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodDelete, "/users/user-1", nil)
+	req := httptest.NewRequest(http.MethodDelete, usersUser1Path, nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -518,15 +532,15 @@ func TestDeleteUser_FakePool_AfterGetShard(t *testing.T) {
 func TestRegister_FakePool_AfterGetShard(t *testing.T) {
 	app := fakePoolApp(t)
 	r := gin.New()
-	r.POST("/register", app.register)
+	r.POST(registerPath, app.register)
 
 	body, _ := json.Marshal(map[string]string{
 		"username": "alice", "telephone": "0601020304",
-		"email": "alice@test.com", "password": "password123",
+		"email": aliceTestEmail, "password": "password123",
 	})
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/register", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, registerPath, bytes.NewBuffer(body))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusInternalServerError {

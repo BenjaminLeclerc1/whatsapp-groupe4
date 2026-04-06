@@ -115,7 +115,7 @@ func TestInitDB_InvalidURL(t *testing.T) {
 
 func TestInitDB_ParseConfigCoverage(t *testing.T) {
 	// Couvre les lignes de config (MaxConns, etc.) puis échoue sur Ping
-	_, err := initDB("postgres://user:pass@127.0.0.1:1/db?connect_timeout=1&sslmode=disable")
+	_, err := initDB("postgres://127.0.0.1:1/db?connect_timeout=1&sslmode=disable")
 	if err == nil {
 		t.Error("expected error for unreachable host")
 	}

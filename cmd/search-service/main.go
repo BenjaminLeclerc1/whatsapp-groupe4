@@ -63,11 +63,11 @@ func main() {
 	}
 }
 
-type searchPool interface {
+type pinger interface {
 	Ping(ctx context.Context) error
 }
 
-func newSearchRouter(pool searchPool) *gin.Engine {
+func newSearchRouter(pool pinger) *gin.Engine {
 	router := gin.Default()
 	router.GET("/health", func(c *gin.Context) {
 		err := pool.Ping(context.Background())

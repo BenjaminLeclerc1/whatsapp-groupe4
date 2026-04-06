@@ -44,10 +44,10 @@ func TestGetEnv_DefaultPort(t *testing.T) {
 }
 
 func TestChatMigrationURL(t *testing.T) {
-	if got := chatMigrationURL("postgres://user:pass@localhost/db"); got != "postgres://user:pass@localhost/db?x-migrations-table=migrations_chats" {
+	if got := chatMigrationURL("postgres://localhost/db"); got != "postgres://localhost/db?x-migrations-table=migrations_chats" {
 		t.Errorf("unexpected: %s", got)
 	}
-	if got := chatMigrationURL("postgres://user:pass@localhost/db?sslmode=disable"); got != "postgres://user:pass@localhost/db?sslmode=disable&x-migrations-table=migrations_chats" {
+	if got := chatMigrationURL("postgres://localhost/db?sslmode=disable"); got != "postgres://localhost/db?sslmode=disable&x-migrations-table=migrations_chats" {
 		t.Errorf("unexpected: %s", got)
 	}
 }

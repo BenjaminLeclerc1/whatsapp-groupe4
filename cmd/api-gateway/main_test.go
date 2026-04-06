@@ -12,6 +12,19 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+const (
+	apiV1GroupPath       = "/api/v1"
+	usersListPath        = "/api/v1/users/list"
+	healthPath           = "/health"
+	bearerPrefix         = "Bearer "
+	authHeaderName       = "Authorization"
+	testUserEmail        = "u@test.com"
+	jwtTestKey           = "unit-test-jwt-key"
+	errExpected401Format = "expected 401, got %d"
+	errExpected200Format = "expected 200, got %d"
+	errRequestFailed     = "request failed: %v"
+)
+
 func init() {
 	gin.SetMode(gin.TestMode)
 }
@@ -31,7 +44,7 @@ func generateTestJWT(secret, userID, email string) (string, error) {
 
 func setupGatewayRouter(secret string) *gin.Engine {
 	r := gin.New()
-	protected := r.Group("/api/v1", authMiddleware(secret))
+	protected := r.Group(apiV1GroupPath, authMiddleware(secret))
 	{
 		protected.GET("/users/*path", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"route": "users"})
@@ -72,32 +85,32 @@ func TestGetEnv_EmptyFallback(t *testing.T) {
 func TestAuthMiddleware_NoHeader(t *testing.T) {
 	r := setupGatewayRouter("secret")
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/users/list", nil)
+	req := httptest.NewRequest(http.MethodGet, usersListPath, nil)
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", w.Code)
+		t.Errorf(errExpected401Format, w.Code)
 	}
 }
 
 func TestAuthMiddleware_EmptyHeader(t *testing.T) {
 	r := setupGatewayRouter("secret")
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/users/list", nil)
-	req.Header.Set("Authorization", "")
+	req := httptest.NewRequest(http.MethodGet, usersListPath, nil)
+	req.Header.Set(authHeaderName, "")
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", w.Code)
+		t.Errorf(errExpected401Format, w.Code)
 	}
 }
 
 func TestAuthMiddleware_ShortHeader(t *testing.T) {
 	r := setupGatewayRouter("secret")
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/users/list", nil)
-	req.Header.Set("Authorization", "Bear")
+	req := httptest.NewRequest(http.MethodGet, usersListPath, nil)
+	req.Header.Set(authHeaderName, "Bear")
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", w.Code)
+		t.Errorf(errExpected401Format, w.Code)
 	}
 }
 
@@ -105,31 +118,31 @@ func TestAuthMiddleware_BearerPrefixOnly(t *testing.T) {
 	// "Bearer " fait 7 caractères : len < 8 → 401
 	r := setupGatewayRouter("secret")
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/users/list", nil)
-	req.Header.Set("Authorization", "Bearer ")
+	req := httptest.NewRequest(http.MethodGet, usersListPath, nil)
+	req.Header.Set(authHeaderName, bearerPrefix)
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", w.Code)
+		t.Errorf(errExpected401Format, w.Code)
 	}
 }
 
 func TestAuthMiddleware_InvalidToken(t *testing.T) {
 	r := setupGatewayRouter("secret")
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/users/list", nil)
-	req.Header.Set("Authorization", "Bearer invalid.token.here")
+	req := httptest.NewRequest(http.MethodGet, usersListPath, nil)
+	req.Header.Set(authHeaderName, bearerPrefix+"invalid.token.here")
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", w.Code)
+		t.Errorf(errExpected401Format, w.Code)
 	}
 }
 
 func TestAuthMiddleware_WrongSecret(t *testing.T) {
-	tokenStr, _ := generateTestJWT("correct-secret", "u1", "u@test.com")
+	tokenStr, _ := generateTestJWT("correct-secret", "u1", testUserEmail)
 	r := setupGatewayRouter("wrong-secret")
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/users/list", nil)
-	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	req := httptest.NewRequest(http.MethodGet, usersListPath, nil)
+	req.Header.Set(authHeaderName, bearerPrefix+tokenStr)
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401 with wrong secret, got %d", w.Code)
@@ -138,19 +151,19 @@ func TestAuthMiddleware_WrongSecret(t *testing.T) {
 
 func TestAuthMiddleware_ValidToken(t *testing.T) {
 	secret := "valid-secret"
-	tokenStr, err := generateTestJWT(secret, "user-1", "u@test.com")
+	tokenStr, err := generateTestJWT(secret, "user-1", testUserEmail)
 	if err != nil {
 		t.Fatalf("failed to generate token: %v", err)
 	}
 
 	r := setupGatewayRouter(secret)
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/users/list", nil)
-	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	req := httptest.NewRequest(http.MethodGet, usersListPath, nil)
+	req.Header.Set(authHeaderName, bearerPrefix+tokenStr)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(errExpected200Format, w.Code)
 	}
 }
 
@@ -158,7 +171,7 @@ func TestAuthMiddleware_OPTIONS_PassThrough(t *testing.T) {
 	secret := "secret"
 	r := setupGatewayRouter(secret)
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodOptions, "/api/v1/users/list", nil)
+	req := httptest.NewRequest(http.MethodOptions, usersListPath, nil)
 	r.ServeHTTP(w, req)
 	// OPTIONS passe à travers le middleware
 	if w.Code == http.StatusUnauthorized {
@@ -171,7 +184,7 @@ func TestAuthMiddleware_ExpiredToken(t *testing.T) {
 	// Token expiré (TTL négatif)
 	claims := Claims{
 		UserID: "u1",
-		Email:  "u@test.com",
+		Email:  testUserEmail,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-2 * time.Hour)),
@@ -182,8 +195,8 @@ func TestAuthMiddleware_ExpiredToken(t *testing.T) {
 
 	r := setupGatewayRouter(secret)
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/users/list", nil)
-	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	req := httptest.NewRequest(http.MethodGet, usersListPath, nil)
+	req.Header.Set(authHeaderName, bearerPrefix+tokenStr)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusUnauthorized {
@@ -194,14 +207,14 @@ func TestAuthMiddleware_ExpiredToken(t *testing.T) {
 // ─── Test combiné (public + protected) ───────────────────────────────────────
 
 func TestAuthMiddleware_ProtectedAndPublicRoutes(t *testing.T) {
-	jwtSecret := "test-secret"
+	jwtSecret := jwtTestKey
 	router := gin.New()
 
-	router.GET("/health", func(c *gin.Context) {
+	router.GET(healthPath, func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	api := router.Group("/api/v1")
+	api := router.Group(apiV1GroupPath)
 	{
 		api.Any("/auth/*path", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"route": "auth"})
@@ -216,7 +229,7 @@ func TestAuthMiddleware_ProtectedAndPublicRoutes(t *testing.T) {
 
 	// Health check public
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/health", nil)
+	r := httptest.NewRequest(http.MethodGet, healthPath, nil)
 	router.ServeHTTP(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 for /health, got %d", w.Code)
@@ -232,7 +245,7 @@ func TestAuthMiddleware_ProtectedAndPublicRoutes(t *testing.T) {
 
 	// Protected sans token → 401
 	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodGet, "/api/v1/users/list", nil)
+	r = httptest.NewRequest(http.MethodGet, usersListPath, nil)
 	router.ServeHTTP(w, r)
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401 without token, got %d", w.Code)
@@ -244,8 +257,8 @@ func TestAuthMiddleware_ProtectedAndPublicRoutes(t *testing.T) {
 		t.Fatalf("failed to generate token: %v", err)
 	}
 	w = httptest.NewRecorder()
-	r = httptest.NewRequest(http.MethodGet, "/api/v1/users/list", nil)
-	r.Header.Set("Authorization", "Bearer "+tokenStr)
+	r = httptest.NewRequest(http.MethodGet, usersListPath, nil)
+	r.Header.Set(authHeaderName, bearerPrefix+tokenStr)
 	router.ServeHTTP(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 with valid token, got %d", w.Code)
@@ -271,7 +284,7 @@ func TestProxyHandler_ForwardsRequest(t *testing.T) {
 
 	resp, err := http.Get(srv.URL + "/api/v1/test")
 	if err != nil {
-		t.Fatalf("request failed: %v", err)
+		t.Fatalf(errRequestFailed, err)
 	}
 	defer resp.Body.Close()
 
@@ -288,21 +301,21 @@ func TestProxyHandler_WithUserID(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	secret := "test-secret"
+	secret := jwtTestKey
 	tokenStr, _ := generateTestJWT(secret, "user-abc", "u@test.com")
 
 	router := gin.New()
-	protected := router.Group("/api/v1", authMiddleware(secret))
+	protected := router.Group(apiV1GroupPath, authMiddleware(secret))
 	protected.GET("/proxy/*path", proxyHandler(backend.URL))
 
 	srv := httptest.NewServer(router)
 	defer srv.Close()
 
 	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/proxy/test", nil)
-	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	req.Header.Set(authHeaderName, bearerPrefix+tokenStr)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		t.Fatalf("request failed: %v", err)
+		t.Fatalf(errRequestFailed, err)
 	}
 	defer resp.Body.Close()
 
@@ -323,7 +336,7 @@ func TestProxyHandler_InvalidTarget(t *testing.T) {
 
 	resp, err := http.Get(srv.URL + "/api/v1/bad")
 	if err != nil {
-		t.Fatalf("request failed: %v", err)
+		t.Fatalf(errRequestFailed, err)
 	}
 	defer resp.Body.Close()
 
@@ -350,7 +363,7 @@ func TestProxyHandler_ForwardsPathToBackend(t *testing.T) {
 
 	resp, err := http.Get(srv.URL + wantPath)
 	if err != nil {
-		t.Fatalf("request failed: %v", err)
+		t.Fatalf(errRequestFailed, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -378,10 +391,10 @@ func TestRequireEnv_Set(t *testing.T) {
 func TestNewGatewayRouter_Health(t *testing.T) {
 	r := newGatewayRouter("test-jwt-secret")
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, healthPath, nil)
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
+		t.Fatalf(errExpected200Format, w.Code)
 	}
 }
 
@@ -403,7 +416,7 @@ func TestNewGatewayRouter_AuthProxiesToBackend(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200, got %d", resp.StatusCode)
+		t.Errorf(errExpected200Format, resp.StatusCode)
 	}
 }
 
@@ -418,7 +431,7 @@ func TestNewGatewayRouter_ProtectedUsersSetsXUserID(t *testing.T) {
 	defer os.Unsetenv("USER_SERVICE_URL")
 
 	secret := "gw-secret"
-	tok, err := generateTestJWT(secret, "uid-xyz", "u@t.com")
+	tok, err := generateTestJWT(secret, "uid-xyz", testUserEmail)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -427,14 +440,14 @@ func TestNewGatewayRouter_ProtectedUsersSetsXUserID(t *testing.T) {
 	defer srv.Close()
 
 	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/users/me", nil)
-	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set(authHeaderName, bearerPrefix+tok)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200, got %d", resp.StatusCode)
+		t.Errorf(errExpected200Format, resp.StatusCode)
 	}
 	if gotUser != "uid-xyz" {
 		t.Errorf("X-User-ID: want uid-xyz, got %q", gotUser)

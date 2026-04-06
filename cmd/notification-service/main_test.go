@@ -11,6 +11,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	notifBasePath       = "/api/v1/notification"
+	notifBasePathSlash  = "/api/v1/notification/"
+	contentTypeHeader   = "Content-Type"
+	jsonContentType     = "application/json"
+	expected200Fmt      = "expected 200, got %d"
+	expected404Fmt      = "expected 404, got %d"
+)
+
 func init() {
 	gin.SetMode(gin.TestMode)
 }
@@ -23,7 +32,7 @@ func setupRouter() *gin.Engine {
 	mu.Unlock()
 
 	r := gin.New()
-	api := r.Group("/api/v1/notification")
+	api := r.Group(notifBasePath)
 	api.GET("/count/:userId", getUnreadCount)
 	api.GET("/user/:userId", getNotificationsByUser)
 	api.GET("/user/:userId/unread", getUnreadNotifications)
@@ -65,8 +74,8 @@ func TestCreateNotification_Success(t *testing.T) {
 	b, _ := json.Marshal(body)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/notification", bytes.NewBuffer(b))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, notifBasePath, bytes.NewBuffer(b))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusCreated {
@@ -90,8 +99,8 @@ func TestCreateNotification_MissingFields(t *testing.T) {
 	r := setupRouter()
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/notification", bytes.NewBufferString(`{}`))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, notifBasePath, bytes.NewBufferString(`{}`))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
@@ -110,8 +119,8 @@ func TestCreateNotification_CustomType(t *testing.T) {
 	b, _ := json.Marshal(body)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/notification", bytes.NewBuffer(b))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, notifBasePath, bytes.NewBuffer(b))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusCreated {
@@ -130,11 +139,11 @@ func TestGetUnreadCount_Zero(t *testing.T) {
 	r := setupRouter()
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/notification/count/user-unknown", nil)
+	req := httptest.NewRequest(http.MethodGet, notifBasePath+"/count/user-unknown", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
+		t.Fatalf(expected200Fmt, w.Code)
 	}
 	var resp NotificationCount
 	json.Unmarshal(w.Body.Bytes(), &resp)
@@ -149,13 +158,13 @@ func TestGetUnreadCount_AfterCreate(t *testing.T) {
 	// Crée une notification
 	body := map[string]string{"user_id": "user-3", "content": "msg"}
 	b, _ := json.Marshal(body)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/notification", bytes.NewBuffer(b))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, notifBasePath, bytes.NewBuffer(b))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(httptest.NewRecorder(), req)
 
 	// Vérifie le count
 	w := httptest.NewRecorder()
-	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/notification/count/user-3", nil)
+	req2 := httptest.NewRequest(http.MethodGet, notifBasePath+"/count/user-3", nil)
 	r.ServeHTTP(w, req2)
 
 	var resp NotificationCount
@@ -171,11 +180,11 @@ func TestGetNotificationsByUser_Empty(t *testing.T) {
 	r := setupRouter()
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/notification/user/nobody", nil)
+	req := httptest.NewRequest(http.MethodGet, notifBasePath+"/user/nobody", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
+		t.Fatalf(expected200Fmt, w.Code)
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
@@ -190,13 +199,13 @@ func TestGetNotificationsByUser_WithNotifications(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		body := map[string]string{"user_id": "user-4", "content": "msg"}
 		b, _ := json.Marshal(body)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/notification", bytes.NewBuffer(b))
-		req.Header.Set("Content-Type", "application/json")
+		req := httptest.NewRequest(http.MethodPost, notifBasePath, bytes.NewBuffer(b))
+		req.Header.Set(contentTypeHeader, jsonContentType)
 		r.ServeHTTP(httptest.NewRecorder(), req)
 	}
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/notification/user/user-4", nil)
+	req := httptest.NewRequest(http.MethodGet, notifBasePath+"/user/user-4", nil)
 	r.ServeHTTP(w, req)
 
 	var resp map[string]interface{}
@@ -212,11 +221,11 @@ func TestGetNotificationByID_NotFound(t *testing.T) {
 	r := setupRouter()
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/notification/nonexistent-id", nil)
+	req := httptest.NewRequest(http.MethodGet, notifBasePath+"/nonexistent-id", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusNotFound {
-		t.Errorf("expected 404, got %d", w.Code)
+		t.Errorf(expected404Fmt, w.Code)
 	}
 }
 
@@ -227,8 +236,8 @@ func TestGetNotificationByID_Found(t *testing.T) {
 	body := map[string]string{"user_id": "user-5", "content": "test"}
 	b, _ := json.Marshal(body)
 	wCreate := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/notification", bytes.NewBuffer(b))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, notifBasePath, bytes.NewBuffer(b))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(wCreate, req)
 
 	var created Notification
@@ -236,11 +245,11 @@ func TestGetNotificationByID_Found(t *testing.T) {
 
 	// Récupère par ID
 	w := httptest.NewRecorder()
-	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/notification/"+created.ID, nil)
+	req2 := httptest.NewRequest(http.MethodGet, notifBasePathSlash+created.ID, nil)
 	r.ServeHTTP(w, req2)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+		t.Errorf(expected200Fmt, w.Code)
 	}
 }
 
@@ -250,11 +259,11 @@ func TestMarkAsRead_NotFound(t *testing.T) {
 	r := setupRouter()
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/notification/bad-id/read", nil)
+	req := httptest.NewRequest(http.MethodPut, notifBasePath+"/bad-id/read", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusNotFound {
-		t.Errorf("expected 404, got %d", w.Code)
+		t.Errorf(expected404Fmt, w.Code)
 	}
 }
 
@@ -265,8 +274,8 @@ func TestMarkAsRead_Success(t *testing.T) {
 	body := map[string]string{"user_id": "user-6", "content": "lu"}
 	b, _ := json.Marshal(body)
 	wCreate := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/notification", bytes.NewBuffer(b))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, notifBasePath, bytes.NewBuffer(b))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(wCreate, req)
 
 	var created Notification
@@ -274,11 +283,11 @@ func TestMarkAsRead_Success(t *testing.T) {
 
 	// Marque comme lue
 	w := httptest.NewRecorder()
-	req2 := httptest.NewRequest(http.MethodPut, "/api/v1/notification/"+created.ID+"/read", nil)
+	req2 := httptest.NewRequest(http.MethodPut, notifBasePathSlash+created.ID+"/read", nil)
 	r.ServeHTTP(w, req2)
 
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
+		t.Fatalf(expected200Fmt, w.Code)
 	}
 
 	var notif Notification
@@ -289,7 +298,7 @@ func TestMarkAsRead_Success(t *testing.T) {
 
 	// Vérifie que le count est maintenant 0
 	wCount := httptest.NewRecorder()
-	reqCount := httptest.NewRequest(http.MethodGet, "/api/v1/notification/count/user-6", nil)
+	reqCount := httptest.NewRequest(http.MethodGet, notifBasePath+"/count/user-6", nil)
 	r.ServeHTTP(wCount, reqCount)
 	var count NotificationCount
 	json.Unmarshal(wCount.Body.Bytes(), &count)
@@ -306,17 +315,17 @@ func TestMarkAllAsRead(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		body := map[string]string{"user_id": "user-7", "content": "msg"}
 		b, _ := json.Marshal(body)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/notification", bytes.NewBuffer(b))
-		req.Header.Set("Content-Type", "application/json")
+		req := httptest.NewRequest(http.MethodPost, notifBasePath, bytes.NewBuffer(b))
+		req.Header.Set(contentTypeHeader, jsonContentType)
 		r.ServeHTTP(httptest.NewRecorder(), req)
 	}
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/notification/user/user-7/read-all", nil)
+	req := httptest.NewRequest(http.MethodPut, notifBasePath+"/user/user-7/read-all", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
+		t.Fatalf(expected200Fmt, w.Code)
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
@@ -331,11 +340,11 @@ func TestDeleteNotification_NotFound(t *testing.T) {
 	r := setupRouter()
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/notification/ghost-id", nil)
+	req := httptest.NewRequest(http.MethodDelete, notifBasePath+"/ghost-id", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusNotFound {
-		t.Errorf("expected 404, got %d", w.Code)
+		t.Errorf(expected404Fmt, w.Code)
 	}
 }
 
@@ -345,8 +354,8 @@ func TestDeleteNotification_Success(t *testing.T) {
 	body := map[string]string{"user_id": "user-8", "content": "à supprimer"}
 	b, _ := json.Marshal(body)
 	wCreate := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/notification", bytes.NewBuffer(b))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, notifBasePath, bytes.NewBuffer(b))
+	req.Header.Set(contentTypeHeader, jsonContentType)
 	r.ServeHTTP(wCreate, req)
 
 	var created Notification
@@ -354,16 +363,16 @@ func TestDeleteNotification_Success(t *testing.T) {
 
 	// Supprime
 	w := httptest.NewRecorder()
-	req2 := httptest.NewRequest(http.MethodDelete, "/api/v1/notification/"+created.ID, nil)
+	req2 := httptest.NewRequest(http.MethodDelete, notifBasePathSlash+created.ID, nil)
 	r.ServeHTTP(w, req2)
 
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
+		t.Fatalf(expected200Fmt, w.Code)
 	}
 
 	// Vérifie qu'il n'existe plus
 	wGet := httptest.NewRecorder()
-	req3 := httptest.NewRequest(http.MethodGet, "/api/v1/notification/"+created.ID, nil)
+	req3 := httptest.NewRequest(http.MethodGet, notifBasePathSlash+created.ID, nil)
 	r.ServeHTTP(wGet, req3)
 	if wGet.Code != http.StatusNotFound {
 		t.Error("notification should be deleted")
@@ -379,17 +388,17 @@ func TestGetUnreadNotifications(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		body := map[string]string{"user_id": "user-9", "content": "msg"}
 		b, _ := json.Marshal(body)
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/notification", bytes.NewBuffer(b))
-		req.Header.Set("Content-Type", "application/json")
+		req := httptest.NewRequest(http.MethodPost, notifBasePath, bytes.NewBuffer(b))
+		req.Header.Set(contentTypeHeader, jsonContentType)
 		r.ServeHTTP(httptest.NewRecorder(), req)
 	}
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/notification/user/user-9/unread", nil)
+	req := httptest.NewRequest(http.MethodGet, notifBasePath+"/user/user-9/unread", nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
+		t.Fatalf(expected200Fmt, w.Code)
 	}
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)

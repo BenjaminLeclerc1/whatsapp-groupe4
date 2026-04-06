@@ -9,6 +9,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	testUUID   = "550e8400-e29b-41d4-a716-446655440000"
+	userIDKey  = "X-User-ID"
+	missingUserIDErrFmt = "expected 401 for missing %s, got %d"
+)
+
 func init() {
 	gin.SetMode(gin.TestMode)
 }
@@ -17,7 +23,7 @@ func init() {
 
 func TestIsValidUUID_Valid(t *testing.T) {
 	valid := []string{
-		"550e8400-e29b-41d4-a716-446655440000",
+		testUUID,
 		"123e4567-e89b-12d3-a456-426614174000",
 		"00000000-0000-0000-0000-000000000000",
 	}
@@ -77,10 +83,10 @@ func TestParsePagination_ValidCursor(t *testing.T) {
 	})
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/test?cursor=550e8400-e29b-41d4-a716-446655440000", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test?cursor="+testUUID, nil)
 	r.ServeHTTP(w, req)
 
-	if gotCursor != "550e8400-e29b-41d4-a716-446655440000" {
+	if gotCursor != testUUID {
 		t.Errorf("expected valid cursor, got '%s'", gotCursor)
 	}
 }
@@ -193,7 +199,7 @@ func TestExtractUserID_Missing(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401 for missing X-User-ID, got %d", w.Code)
+		t.Errorf(missingUserIDErrFmt, userIDKey, w.Code)
 	}
 }
 
@@ -201,7 +207,7 @@ func TestExtractUserID_InvalidFormat(t *testing.T) {
 	r := setupExtractRouter()
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req.Header.Set("X-User-ID", "not-a-uuid")
+	req.Header.Set(userIDKey, "not-a-uuid")
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
@@ -213,7 +219,7 @@ func TestExtractUserID_Valid(t *testing.T) {
 	r := setupExtractRouter()
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req.Header.Set("X-User-ID", "550e8400-e29b-41d4-a716-446655440000")
+	req.Header.Set(userIDKey, testUUID)
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -232,10 +238,10 @@ func TestGetUserID_FromContext(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req.Header.Set("X-User-ID", "550e8400-e29b-41d4-a716-446655440000")
+	req.Header.Set(userIDKey, testUUID)
 	r.ServeHTTP(w, req)
 
-	if extractedID != "550e8400-e29b-41d4-a716-446655440000" {
+	if extractedID != testUUID {
 		t.Errorf("expected extracted user ID, got '%s'", extractedID)
 	}
 }

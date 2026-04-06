@@ -7,6 +7,13 @@ import (
 	"time"
 )
 
+const (
+	channelUnexpectedErrFmt = "unexpected error: %v"
+	channelForbiddenErrMsg  = "expected forbidden error"
+	channelNewUser          = "new-user"
+	channelMember1          = "member-1"
+)
+
 // ─── Mock Repository ──────────────────────────────────────────────────────────
 
 type mockRepo struct {
@@ -72,7 +79,7 @@ func TestCreateChannel_Success(t *testing.T) {
 		MaxMembers: 100,
 	})
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(channelUnexpectedErrFmt, err)
 	}
 	if resp.Channel.ID != "ch-1" {
 		t.Errorf("expected ch-1, got %s", resp.Channel.ID)
@@ -136,7 +143,7 @@ func TestGetChannel_Success(t *testing.T) {
 	svc := NewService(repo)
 	resp, err := svc.GetChannel(context.Background(), "u1", "ch-1")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(channelUnexpectedErrFmt, err)
 	}
 	if resp.MemberCount != 5 {
 		t.Errorf("expected 5 members, got %d", resp.MemberCount)
@@ -150,7 +157,7 @@ func TestGetChannel_NotMember(t *testing.T) {
 	svc := NewService(repo)
 	_, err := svc.GetChannel(context.Background(), "u1", "ch-1")
 	if err == nil {
-		t.Error("expected forbidden error")
+		t.Error(channelForbiddenErrMsg)
 	}
 }
 
@@ -167,7 +174,7 @@ func TestUpdateChannel_Success(t *testing.T) {
 	name := "Updated"
 	resp, err := svc.UpdateChannel(context.Background(), "u1", "ch-1", UpdateChannelRequest{Name: &name})
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(channelUnexpectedErrFmt, err)
 	}
 	if resp.Channel.ID != "ch-1" {
 		t.Errorf("expected ch-1, got %s", resp.Channel.ID)
@@ -197,7 +204,7 @@ func TestDeleteChannel_Success(t *testing.T) {
 	svc := NewService(repo)
 	err := svc.DeleteChannel(context.Background(), "u1", "ch-1")
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+		t.Errorf(channelUnexpectedErrFmt, err)
 	}
 }
 
@@ -209,7 +216,7 @@ func TestDeleteChannel_NotOwner(t *testing.T) {
 	svc := NewService(repo)
 	err := svc.DeleteChannel(context.Background(), "not-owner", "ch-1")
 	if err == nil {
-		t.Error("expected forbidden error")
+		t.Error(channelForbiddenErrMsg)
 	}
 }
 
@@ -226,7 +233,7 @@ func TestListMyChannels_Success(t *testing.T) {
 	svc := NewService(repo)
 	resp, err := svc.ListMyChannels(context.Background(), "u1")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(channelUnexpectedErrFmt, err)
 	}
 	if resp.Count != 2 {
 		t.Errorf("expected count 2, got %d", resp.Count)
@@ -241,15 +248,15 @@ func TestAddMember_Success(t *testing.T) {
 		isMemberFn:       func(_ context.Context, _, _ string) (bool, error) { return true, nil },
 		getChannelByIDFn: func(_ context.Context, _ string) (Channel, error) { return ch, nil },
 		countMembersFn:   func(_ context.Context, _ string) (int, error) { return 5, nil },
-		addMemberFn:      func(_ context.Context, _, _ string) (Participant, error) { return Participant{UserID: "new-user"}, nil },
+		addMemberFn:      func(_ context.Context, _, _ string) (Participant, error) { return Participant{UserID: channelNewUser}, nil },
 	}
 	svc := NewService(repo)
-	p, err := svc.AddMember(context.Background(), "u1", "ch-1", AddMemberRequest{UserID: "new-user"})
+	p, err := svc.AddMember(context.Background(), "u1", "ch-1", AddMemberRequest{UserID: channelNewUser})
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(channelUnexpectedErrFmt, err)
 	}
-	if p.UserID != "new-user" {
-		t.Errorf("expected new-user, got %s", p.UserID)
+	if p.UserID != channelNewUser {
+		t.Errorf("expected %s, got %s", channelNewUser, p.UserID)
 	}
 }
 
@@ -261,7 +268,7 @@ func TestAddMember_MaxReached(t *testing.T) {
 		countMembersFn:   func(_ context.Context, _ string) (int, error) { return 3, nil },
 	}
 	svc := NewService(repo)
-	_, err := svc.AddMember(context.Background(), "u1", "ch-1", AddMemberRequest{UserID: "new-user"})
+	_, err := svc.AddMember(context.Background(), "u1", "ch-1", AddMemberRequest{UserID: channelNewUser})
 	if err == nil {
 		t.Error("expected max members error")
 	}
@@ -276,9 +283,9 @@ func TestRemoveMember_SelfRemove(t *testing.T) {
 		removeMemberFn:   func(_ context.Context, _, _ string) error { return nil },
 	}
 	svc := NewService(repo)
-	err := svc.RemoveMember(context.Background(), "member-1", "ch-1", "member-1")
+	err := svc.RemoveMember(context.Background(), channelMember1, "ch-1", channelMember1)
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+		t.Errorf(channelUnexpectedErrFmt, err)
 	}
 }
 
@@ -289,9 +296,9 @@ func TestRemoveMember_OwnerRemovesOther(t *testing.T) {
 		removeMemberFn:   func(_ context.Context, _, _ string) error { return nil },
 	}
 	svc := NewService(repo)
-	err := svc.RemoveMember(context.Background(), "owner", "ch-1", "member-1")
+	err := svc.RemoveMember(context.Background(), "owner", "ch-1", channelMember1)
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+		t.Errorf(channelUnexpectedErrFmt, err)
 	}
 }
 
@@ -315,7 +322,7 @@ func TestRemoveMember_Forbidden(t *testing.T) {
 	svc := NewService(repo)
 	err := svc.RemoveMember(context.Background(), "random-user", "ch-1", "another-user")
 	if err == nil {
-		t.Error("expected forbidden error")
+		t.Error(channelForbiddenErrMsg)
 	}
 }
 
@@ -333,7 +340,7 @@ func TestListMembers_Success(t *testing.T) {
 	svc := NewService(repo)
 	resp, err := svc.ListMembers(context.Background(), "u1", "ch-1")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(channelUnexpectedErrFmt, err)
 	}
 	if resp.Count != 2 {
 		t.Errorf("expected 2 members, got %d", resp.Count)
@@ -354,7 +361,7 @@ func TestListMessages_Success(t *testing.T) {
 	svc := NewService(repo)
 	resp, err := svc.ListMessages(context.Background(), "u1", "ch-1", "", 10)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(channelUnexpectedErrFmt, err)
 	}
 	if resp.Count != 2 {
 		t.Errorf("expected 2 messages, got %d", resp.Count)
@@ -372,7 +379,7 @@ func TestListMessages_Empty(t *testing.T) {
 	svc := NewService(repo)
 	resp, err := svc.ListMessages(context.Background(), "u1", "ch-1", "", 10)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(channelUnexpectedErrFmt, err)
 	}
 	if resp.Cursor != "" {
 		t.Errorf("expected empty cursor, got '%s'", resp.Cursor)

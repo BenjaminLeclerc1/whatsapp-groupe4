@@ -15,8 +15,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres" // migrate driver registration
+	_ "github.com/golang-migrate/migrate/v4/source/file"       // migrate file source registration
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -99,6 +99,8 @@ var (
 	generateJWTFn          = generateJWT
 	generateRefreshTokenFn = generateRefreshToken
 )
+
+const errServerMessage = "Erreur serveur"
 
 func main() {
 	logger.Init("auth-service")
@@ -400,21 +402,14 @@ func refresh(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL time
 		defer cancel()
 		deleteExpiredRefreshTokens(ctx, pool)
 
-		tx, txErr := pool.Begin(ctx)
-		if txErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur serveur"})
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errServerMessage})
 			return
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
 
-		var userID string
-		var expiresAt time.Time
-		var revokedAt *time.Time
-		err := tx.QueryRow(ctx, `
-			SELECT user_id, expires_at, revoked_at
-			FROM auth_refresh_tokens WHERE token_hash = $1
-			FOR UPDATE
-		`, hash).Scan(&userID, &expiresAt, &revokedAt)
+		userID, expiresAt, revokedAt, err := getRefreshTokenState(ctx, tx, hash)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token invalide"})
 			return
@@ -428,47 +423,25 @@ func refresh(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL time
 			return
 		}
 
-		var username, email, status string
-		var createdAt time.Time
-		if err2 := tx.QueryRow(ctx, `
-			SELECT username, email, status, created_at FROM auth_users WHERE id = $1
-		`, userID).Scan(&username, &email, &status, &createdAt); err2 != nil {
+		email, err := getUserEmailForRefresh(ctx, tx, userID)
+		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Utilisateur introuvable"})
 			return
 		}
 
-		newRefreshToken, newRefreshHash, err3 := generateRefreshTokenFn()
-		if err3 != nil {
+		newRefreshToken, newRefreshHash, err := generateRefreshTokenFn()
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération refresh token"})
 			return
 		}
 
-		if _, err4 := tx.Exec(ctx, `
-			UPDATE auth_refresh_tokens
-			SET revoked_at = $1, replaced_by_hash = $2
-			WHERE token_hash = $3
-		`, now, newRefreshHash, hash); err4 != nil {
-			logger.Error("refresh update old token: %v", err4)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur serveur"})
+		if err := rotateRefreshToken(ctx, tx, now, hash, newRefreshHash, userID, refreshTokenTTL); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errServerMessage})
 			return
 		}
 
-		if _, err5 := tx.Exec(ctx, `
-			INSERT INTO auth_refresh_tokens (token_hash, user_id, created_at, expires_at)
-			VALUES ($1, $2, $3, $4)
-		`, newRefreshHash, userID, now, now.Add(refreshTokenTTL)); err5 != nil {
-			logger.Error("refresh insert new token: %v", err5)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur serveur"})
-			return
-		}
-
-		if err6 := tx.Commit(ctx); err6 != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur serveur"})
-			return
-		}
-
-		accessToken, err7 := generateJWTFn(userID, email, jwtSecret, accessTokenTTL)
-		if err7 != nil {
+		accessToken, err := generateJWTFn(userID, email, jwtSecret, accessTokenTTL)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération token"})
 			return
 		}
@@ -478,6 +451,47 @@ func refresh(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL time
 			"refresh_token": newRefreshToken,
 		})
 	}
+}
+
+func getRefreshTokenState(ctx context.Context, tx txDB, hash string) (string, time.Time, *time.Time, error) {
+	var userID string
+	var expiresAt time.Time
+	var revokedAt *time.Time
+	err := tx.QueryRow(ctx, `
+		SELECT user_id, expires_at, revoked_at
+		FROM auth_refresh_tokens WHERE token_hash = $1
+		FOR UPDATE
+	`, hash).Scan(&userID, &expiresAt, &revokedAt)
+	return userID, expiresAt, revokedAt, err
+}
+
+func getUserEmailForRefresh(ctx context.Context, tx txDB, userID string) (string, error) {
+	var email string
+	if err := tx.QueryRow(ctx, `SELECT email FROM auth_users WHERE id = $1`, userID).Scan(&email); err != nil {
+		return "", err
+	}
+	return email, nil
+}
+
+func rotateRefreshToken(ctx context.Context, tx txDB, now time.Time, oldHash, newHash, userID string, ttl time.Duration) error {
+	if _, err := tx.Exec(ctx, `
+		UPDATE auth_refresh_tokens
+		SET revoked_at = $1, replaced_by_hash = $2
+		WHERE token_hash = $3
+	`, now, newHash, oldHash); err != nil {
+		logger.Error("refresh update old token: %v", err)
+		return err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO auth_refresh_tokens (token_hash, user_id, created_at, expires_at)
+		VALUES ($1, $2, $3, $4)
+	`, newHash, userID, now, now.Add(ttl)); err != nil {
+		logger.Error("refresh insert new token: %v", err)
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 func logout(pool dbPool) gin.HandlerFunc {

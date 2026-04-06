@@ -8,6 +8,14 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+const (
+	msgUser1              = "user-1"
+	msgChat1              = "chat-1"
+	msgUnexpectedErrFmt   = "unexpected error: %v"
+	msgDBErr              = "db error"
+	msgExpectedRepoErrMsg = "expected error from repo"
+)
+
 // ─── Mock Repository ──────────────────────────────────────────────────────────
 
 type mockRepo struct {
@@ -42,8 +50,8 @@ func (m *mockRepo) IsChatMember(ctx context.Context, chatID, userID string) (boo
 
 func TestSendMessage_EmptyContent(t *testing.T) {
 	svc := NewService(&mockRepo{})
-	_, err := svc.SendMessage(context.Background(), "user-1", SendMessageRequest{
-		ChatID:  "chat-1",
+	_, err := svc.SendMessage(context.Background(), msgUser1, SendMessageRequest{
+		ChatID:  msgChat1,
 		Content: "   ",
 	})
 	if err == nil {
@@ -52,19 +60,19 @@ func TestSendMessage_EmptyContent(t *testing.T) {
 }
 
 func TestSendMessage_Success(t *testing.T) {
-	expected := Message{ID: "msg-1", Content: "hello", ChatID: "chat-1", SenderID: "user-1"}
+	expected := Message{ID: "msg-1", Content: "hello", ChatID: msgChat1, SenderID: msgUser1}
 	repo := &mockRepo{
 		createFn: func(_ context.Context, chatID, senderID, content string) (Message, error) {
 			return expected, nil
 		},
 	}
 	svc := NewService(repo)
-	msg, err := svc.SendMessage(context.Background(), "user-1", SendMessageRequest{
-		ChatID:  "chat-1",
+	msg, err := svc.SendMessage(context.Background(), msgUser1, SendMessageRequest{
+		ChatID:  msgChat1,
 		Content: "hello",
 	})
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(msgUnexpectedErrFmt, err)
 	}
 	if msg.ID != "msg-1" {
 		t.Errorf("expected msg-1, got %s", msg.ID)
@@ -78,8 +86,8 @@ func TestSendMessage_NotMember(t *testing.T) {
 		},
 	}
 	svc := NewService(repo)
-	_, err := svc.SendMessage(context.Background(), "user-1", SendMessageRequest{
-		ChatID:  "chat-1",
+	_, err := svc.SendMessage(context.Background(), msgUser1, SendMessageRequest{
+		ChatID:  msgChat1,
 		Content: "hello",
 	})
 	if err == nil {
@@ -90,16 +98,16 @@ func TestSendMessage_NotMember(t *testing.T) {
 func TestSendMessage_RepoError(t *testing.T) {
 	repo := &mockRepo{
 		createFn: func(_ context.Context, _, _, _ string) (Message, error) {
-			return Message{}, errors.New("db error")
+			return Message{}, errors.New(msgDBErr)
 		},
 	}
 	svc := NewService(repo)
-	_, err := svc.SendMessage(context.Background(), "user-1", SendMessageRequest{
-		ChatID:  "chat-1",
+	_, err := svc.SendMessage(context.Background(), msgUser1, SendMessageRequest{
+		ChatID:  msgChat1,
 		Content: "hello",
 	})
 	if err == nil {
-		t.Error("expected error from repo")
+		t.Error(msgExpectedRepoErrMsg)
 	}
 }
 
@@ -114,7 +122,7 @@ func TestGetMessage_Success(t *testing.T) {
 	svc := NewService(repo)
 	result, err := svc.GetMessage(context.Background(), "u1", "m1")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(msgUnexpectedErrFmt, err)
 	}
 	if result.ID != "m1" {
 		t.Errorf("expected m1, got %s", result.ID)
@@ -151,7 +159,7 @@ func TestGetMessage_MemberCheckError(t *testing.T) {
 	msg := Message{ID: "m1", ChatID: "c1"}
 	repo := &mockRepo{
 		getByIDFn:  func(_ context.Context, _ string) (Message, error) { return msg, nil },
-		isMemberFn: func(_ context.Context, _, _ string) (bool, error) { return false, errors.New("db error") },
+		isMemberFn: func(_ context.Context, _, _ string) (bool, error) { return false, errors.New(msgDBErr) },
 	}
 	svc := NewService(repo)
 	_, err := svc.GetMessage(context.Background(), "u1", "m1")
@@ -185,7 +193,7 @@ func TestGetMessageHistory_Success(t *testing.T) {
 	svc := NewService(repo)
 	result, err := svc.GetMessageHistory(context.Background(), "u1", "c1", "", 10)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(msgUnexpectedErrFmt, err)
 	}
 	if result.Count != 2 {
 		t.Errorf("expected 2 messages, got %d", result.Count)
@@ -203,7 +211,7 @@ func TestGetMessageHistory_Empty(t *testing.T) {
 	svc := NewService(repo)
 	result, err := svc.GetMessageHistory(context.Background(), "u1", "c1", "", 10)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(msgUnexpectedErrFmt, err)
 	}
 	if result.Count != 0 {
 		t.Errorf("expected 0 messages, got %d", result.Count)
@@ -216,12 +224,12 @@ func TestGetMessageHistory_Empty(t *testing.T) {
 func TestGetMessageHistory_RepoError(t *testing.T) {
 	repo := &mockRepo{
 		isMemberFn: func(_ context.Context, _, _ string) (bool, error) { return true, nil },
-		listFn:     func(_ context.Context, _, _ string, _ int) ([]Message, error) { return nil, errors.New("db error") },
+		listFn:     func(_ context.Context, _, _ string, _ int) ([]Message, error) { return nil, errors.New(msgDBErr) },
 	}
 	svc := NewService(repo)
 	_, err := svc.GetMessageHistory(context.Background(), "u1", "c1", "", 10)
 	if err == nil {
-		t.Error("expected error from repo")
+		t.Error(msgExpectedRepoErrMsg)
 	}
 }
 
@@ -234,7 +242,7 @@ func TestDeleteMessage_Success(t *testing.T) {
 	svc := NewService(repo)
 	err := svc.DeleteMessage(context.Background(), "u1", "m1")
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+		t.Errorf(msgUnexpectedErrFmt, err)
 	}
 }
 
@@ -271,7 +279,7 @@ func TestDeleteMessage_ExistsCheckError(t *testing.T) {
 		deleteFn: func(_ context.Context, _, _ string) error {
 			return errors.New("delete_no_rows")
 		},
-		existsFn: func(_ context.Context, _ string) (bool, error) { return false, errors.New("db error") },
+		existsFn: func(_ context.Context, _ string) (bool, error) { return false, errors.New(msgDBErr) },
 	}
 	svc := NewService(repo)
 	err := svc.DeleteMessage(context.Background(), "u1", "m1")
@@ -289,15 +297,15 @@ func TestDeleteMessage_RepoError(t *testing.T) {
 	svc := NewService(repo)
 	err := svc.DeleteMessage(context.Background(), "u1", "m1")
 	if err == nil {
-		t.Error("expected error from repo")
+		t.Error(msgExpectedRepoErrMsg)
 	}
 }
 
 // ─── Model tests ──────────────────────────────────────────────────────────────
 
 func TestSendMessageRequest_Validation(t *testing.T) {
-	req := SendMessageRequest{ChatID: "chat-1", Content: "hello"}
-	if req.ChatID != "chat-1" {
+	req := SendMessageRequest{ChatID: msgChat1, Content: "hello"}
+	if req.ChatID != msgChat1 {
 		t.Errorf("unexpected ChatID: %s", req.ChatID)
 	}
 	if req.Content != "hello" {
