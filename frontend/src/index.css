@@ -1,13 +1,84 @@
-body {
+:root {
+  --g4-bg: #0a0f1a;
+  --g4-bg-card: rgba(255, 255, 255, 0.04);
+  --g4-bg-glass: rgba(255, 255, 255, 0.06);
+  --g4-surface: #141a2e;
+  --g4-surface-hover: #1c2340;
+  --g4-accent: #00d4aa;
+  --g4-accent-hover: #00b894;
+  --g4-accent-glow: rgba(0, 212, 170, 0.25);
+  --g4-text: #e8eaf0;
+  --g4-text-secondary: #8a8fa8;
+  --g4-text-muted: #555b74;
+  --g4-border: rgba(255, 255, 255, 0.08);
+  --g4-danger: #ff4757;
+  --g4-danger-hover: #ff6b7a;
+  --g4-success: #2ed573;
+  --g4-warning: #ffa502;
+  --g4-msg-out: #005c4b;
+  --g4-msg-in: #1e2a3a;
+  --g4-radius-sm: 8px;
+  --g4-radius-md: 12px;
+  --g4-radius-lg: 16px;
+  --g4-radius-xl: 24px;
+  --g4-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  --g4-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.4);
+  --g4-transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--g4-bg);
+  color: var(--g4-text);
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+input, button, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--g4-text-muted);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--g4-text-secondary);
+}
+
+::selection {
+  background: var(--g4-accent);
+  color: var(--g4-bg);
 }

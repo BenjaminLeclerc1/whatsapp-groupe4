@@ -25,7 +25,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// User représente un utilisateur (inscription/connexion)
 type User struct {
 	ID        string `json:"id"`
 	Username  string `json:"username"`
@@ -34,7 +33,6 @@ type User struct {
 	CreatedAt string `json:"created_at"`
 }
 
-// Claims JWT
 type Claims struct {
 	UserID string `json:"user_id"`
 	Email  string `json:"email"`
@@ -160,7 +158,10 @@ func newAuthRouter(db dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL 
 		api.GET("/me", authMiddleware(jwtSecret), me(db))
 	}
 
-	return router
+	logger.Info("Auth Service started on port %s", port)
+	if err := router.Run(":" + port); err != nil {
+		logger.Fatal("Server error: %v", err)
+	}
 }
 
 func initDB(databaseURL string) (*pgxpool.Pool, error) {
@@ -209,7 +210,7 @@ func getEnv(key, defaultValue string) string {
 func requireEnv(key string) string {
 	value := os.Getenv(key)
 	if value == "" {
-		log.Fatalf("Variable d'environnement requise non définie : %s", key)
+		log.Fatalf("Required environment variable not set: %s", key)
 	}
 	return value
 }
@@ -254,7 +255,7 @@ func register(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL tim
 		emailNorm := normalizeEmail(input.Email)
 		hash, err := bcryptGenerate([]byte(input.Password), bcrypt.DefaultCost)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors du chiffrement du mot de passe"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Password encryption error"})
 			return
 		}
 
@@ -271,11 +272,11 @@ func register(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL tim
 		`, userID, strings.TrimSpace(input.Username), emailNorm, string(hash), now)
 		if err != nil {
 			if isUniqueViolation(err) {
-				c.JSON(http.StatusConflict, gin.H{"error": "Un compte existe déjà avec cet email"})
+				c.JSON(http.StatusConflict, gin.H{"error": "Account already exists with this email"})
 				return
 			}
 			logger.Error("register insert user: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de la création du compte"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Account creation error"})
 			return
 		}
 
@@ -305,7 +306,7 @@ func register(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL tim
 		`, refreshHash, userID, now, now.Add(refreshTokenTTL))
 		if err != nil {
 			logger.Error("register insert refresh: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de la création de la session"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Session creation error"})
 			return
 		}
 
@@ -341,12 +342,12 @@ func login(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL time.D
 			FROM auth_users WHERE email = $1
 		`, emailNorm).Scan(&id, &username, &email, &passwordHash, &status, &createdAt)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Email ou mot de passe incorrect"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
 			return
 		}
 
 		if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(input.Password)); err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Email ou mot de passe incorrect"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
 			return
 		}
 
@@ -377,7 +378,7 @@ func login(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL time.D
 		`, refreshHash, id, now, now.Add(refreshTokenTTL))
 		if err != nil {
 			logger.Error("login insert refresh: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur lors de la création de la session"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Session creation error"})
 			return
 		}
 
@@ -515,7 +516,7 @@ func logout(pool dbPool) gin.HandlerFunc {
 			RefreshToken string `json:"refresh_token" binding:"required"`
 		}
 		if err := c.ShouldBindJSON(&input); err != nil || input.RefreshToken == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "refresh_token requis"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "refresh_token required"})
 			return
 		}
 
@@ -550,7 +551,7 @@ func me(pool dbPool) gin.HandlerFunc {
 			SELECT username, email, status, created_at FROM auth_users WHERE id = $1
 		`, userID).Scan(&username, &email, &status, &createdAt)
 		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Utilisateur non trouvé"})
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 			return
 		}
 
@@ -596,7 +597,7 @@ func authMiddleware(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		auth := c.GetHeader("Authorization")
 		if auth == "" || len(auth) < 8 || auth[:7] != "Bearer " {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token manquant ou invalide"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing or invalid token"})
 			c.Abort()
 			return
 		}
@@ -608,13 +609,13 @@ func authMiddleware(jwtSecret string) gin.HandlerFunc {
 			return []byte(jwtSecret), nil
 		})
 		if err != nil || !token.Valid {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token invalide ou expiré"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
 			c.Abort()
 			return
 		}
 		claims, ok := token.Claims.(*Claims)
 		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token invalide"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			c.Abort()
 			return
 		}

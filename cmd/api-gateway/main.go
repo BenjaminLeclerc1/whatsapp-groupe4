@@ -2,7 +2,9 @@ package main
 
 import (
 	"errors"
+	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -67,6 +69,28 @@ func newGatewayRouter(jwtSecret string) *gin.Engine {
 	api := router.Group("/api/v1")
 	{
 		// Routes publiques (pas de JWT)
+	userServiceURL := getEnv("USER_SERVICE_URL", "http://user-service:8081")
+	messageServiceURL := getEnv("MESSAGE_SERVICE_URL", "http://message-service:8082")
+	notificationServiceURL := getEnv("NOTIFICATION_SERVICE_URL", "http://notification-service:8083")
+	authServiceURL := getEnv("AUTH_SERVICE_URL", "http://auth-service:8084")
+	searchServiceURL := getEnv("SEARCH_SERVICE_URL", "http://search-service:8087")
+	presenceServiceURL := getEnv("PRESENCE_SERVICE_URL", "http://presence-service:8086")
+	channelServiceURL := getEnv("CHANNEL_SERVICE_URL", "http://channel-service:8085")
+	chatServiceURL := getEnv("CHAT_SERVICE_URL", "http://chat-service:8088")
+	wsGatewayURL := getEnv("WS_GATEWAY_URL", "http://ws-gateway:8089")
+	jwtSecret := getEnv("JWT_SECRET", "whatsapp-groupe4-secret-default")
+
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "healthy",
+			"service": "api-gateway",
+		})
+	})
+
+	router.GET("/ws", wsProxyHandler(wsGatewayURL))
+
+	api := router.Group("/api/v1")
+	{
 		api.Any("/auth/*path", proxyHandler(authServiceURL))
 		api.Any("/search/*path", proxyHandler(searchServiceURL))
 		api.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
@@ -87,7 +111,11 @@ func newGatewayRouter(jwtSecret string) *gin.Engine {
 		}
 	}
 
-	return router
+	port := getEnv("API_GATEWAY_PORT", "8080")
+	log.Printf("API Gateway started on port %s", port)
+	if err := router.Run(":" + port); err != nil {
+		log.Fatalf("Server error: %v", err)
+	}
 }
 
 func proxyHandler(targetURL string) gin.HandlerFunc {
@@ -99,6 +127,11 @@ func proxyHandler(targetURL string) gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
+		remote, err := url.Parse(targetURL)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid target URL"})
+			return
+		}
 		proxy := httputil.NewSingleHostReverseProxy(remote)
 		proxy.Director = func(req *http.Request) {
 			req.Header = c.Request.Header
@@ -117,10 +150,49 @@ func proxyHandler(targetURL string) gin.HandlerFunc {
 	}
 }
 
+func wsProxyHandler(target string) gin.HandlerFunc {
+	u, _ := url.Parse(target)
+	return func(c *gin.Context) {
+		backend, err := net.DialTimeout("tcp", u.Host, 5*time.Second)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "service unavailable"})
+			return
+		}
+
+		hijacker, ok := c.Writer.(http.Hijacker)
+		if !ok {
+			backend.Close()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
+		}
+
+		_ = c.Request.Write(backend)
+
+		clientConn, _, err := hijacker.Hijack()
+		if err != nil {
+			backend.Close()
+			return
+		}
+
+		go func() {
+			_, _ = io.Copy(backend, clientConn)
+			backend.Close()
+		}()
+		_, _ = io.Copy(clientConn, backend)
+		clientConn.Close()
+	}
+}
+
 func authMiddleware(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if isPublicUserPath(c.Request.URL.Path) || c.Request.Method == http.MethodOptions {
+		if c.Request.Method == "OPTIONS" {
 			c.Next()
+			return
+		}
+
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token missing"})
 			return
 		}
 

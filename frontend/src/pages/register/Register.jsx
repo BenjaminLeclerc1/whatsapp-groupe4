@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import axios from "axios";
 import { API_BASE_URL } from "../../config";
 import { useNavigate } from "react-router-dom";
-import "../../components/styles/login.css"; // Reuse your existing login CSS
+import "../../components/styles/login.css";
 import logo from "../../components/assets/logo.png";
 
 function Register() {
@@ -13,11 +13,22 @@ function Register() {
     password: "",
   });
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // --- REGEX PATTERNS (Matching your Login.js) ---
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+
+  const passwordStrength = useMemo(() => {
+    const p = formData.password;
+    if (!p) return 0;
+    let score = 0;
+    if (p.length >= 8) score++;
+    if (/[A-Z]/.test(p) && /[a-z]/.test(p)) score++;
+    if (/\d/.test(p)) score++;
+    if (/[^a-zA-Z0-9]/.test(p)) score++;
+    return score;
+  }, [formData.password]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -27,7 +38,6 @@ function Register() {
     e.preventDefault();
     setError("");
 
-    // 1. Client-side Validation
     if (!formData.username.trim()) {
       setError("Le nom d'utilisateur est requis.");
       return;
@@ -37,12 +47,11 @@ function Register() {
       return;
     }
     if (!passwordRegex.test(formData.password)) {
-      setError(
-        "Le mot de passe doit contenir au moins 8 caractères, une majuscule et un chiffre.",
-      );
+      setError("Le mot de passe doit contenir au moins 8 caractères, une majuscule et un chiffre.");
       return;
     }
 
+    setLoading(true);
     try {
       const response = await axios.post(
         `${API_BASE_URL}/auth/register`,
@@ -61,97 +70,111 @@ function Register() {
       window.location.href = token ? "/chats" : "/login";
       // navigate("/chat");
     } catch (err) {
-      setError(
-        err.response?.data?.error ||
-          "L'inscription a échoué. Veuillez réessayer.",
-      );
+      setError(err.response?.data?.error || "L'inscription a échoué. Veuillez réessayer.");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="container22">
-      <div className="left">
-        <h1 className="title">
-          Créez votre <span>compte</span>
-        </h1>
-        <div className="images-group">
-          <img src={logo} className="logo" alt="logo" />
+    <div className="auth-page">
+      <div className="auth-container">
+        <div className="auth-branding">
+          <img src={logo} className="brand-logo" alt="Groupe 4" />
+          <h1>Rejoignez <span>Groupe 4</span></h1>
+          <p>Créez votre compte en quelques secondes et commencez à discuter.</p>
         </div>
-      </div>
 
-      <div className="right">
-        <div className="login-card">
-          <h2>S'inscrire à Groupe 4</h2>
+        <div className="auth-form-panel">
+          <h2>Inscription</h2>
+          <p className="auth-subtitle">Remplissez les informations ci-dessous</p>
 
-          {/* Error Message */}
           {error && (
-            <p
-              style={{
-                color: "#ff4d4d",
-                fontSize: "14px",
-                marginBottom: "10px",
-                textAlign: "center",
-              }}
-            >
+            <div className="auth-error">
+              <span className="material-icons-round" style={{ fontSize: 18 }}>error_outline</span>
               {error}
-            </p>
+            </div>
           )}
 
-          <input
-            type="text"
-            name="username"
-            placeholder="Nom d'utilisateur"
-            value={formData.username}
-            onChange={handleChange}
-            required
-          />
+          <form className="auth-form" onSubmit={handleRegister}>
+            <div className="form-field">
+              <label>Nom d'utilisateur</label>
+              <input
+                type="text"
+                name="username"
+                placeholder="Votre pseudo"
+                value={formData.username}
+                onChange={handleChange}
+                autoComplete="username"
+              />
+            </div>
 
-          <input
-            type="email"
-            name="email"
-            placeholder="Addresse email"
-            value={formData.email}
-            onChange={handleChange}
-            style={{
-              borderColor:
-                formData.email && !emailRegex.test(formData.email) ? "red" : "",
-            }}
-            required
-          />
+            <div className="form-field">
+              <label>Adresse email</label>
+              <input
+                type="email"
+                name="email"
+                placeholder="vous@exemple.com"
+                value={formData.email}
+                onChange={handleChange}
+                className={formData.email && !emailRegex.test(formData.email) ? "input-error" : ""}
+                autoComplete="email"
+              />
+            </div>
 
-          <input
-            type="text"
-            name="telephone"
-            placeholder="Téléphone"
-            value={formData.telephone}
-            onChange={handleChange}
-            required
-          />
+            <div className="form-field">
+              <label>Téléphone</label>
+              <input
+                type="tel"
+                name="telephone"
+                placeholder="+33 6 12 34 56 78"
+                value={formData.telephone}
+                onChange={handleChange}
+                autoComplete="tel"
+              />
+            </div>
 
-          <input
-            type="password"
-            name="password"
-            placeholder="Mot de passe (8+ caractères, 1 Maj, 1 Chiffre)"
-            value={formData.password}
-            onChange={handleChange}
-            style={{
-              borderColor:
-                formData.password && !passwordRegex.test(formData.password)
-                  ? "red"
-                  : "",
-            }}
-            required
-          />
+            <div className="form-field">
+              <label>Mot de passe</label>
+              <input
+                type="password"
+                name="password"
+                placeholder="Min. 8 caractères, 1 majuscule, 1 chiffre"
+                value={formData.password}
+                onChange={handleChange}
+                className={formData.password && !passwordRegex.test(formData.password) ? "input-error" : ""}
+                autoComplete="new-password"
+              />
+              {formData.password && (
+                <div className="password-strength">
+                  {[1, 2, 3, 4].map((level) => (
+                    <div
+                      key={level}
+                      className={`strength-bar ${
+                        passwordStrength >= level
+                          ? passwordStrength <= 1 ? "active" : passwordStrength <= 2 ? "medium" : "strong"
+                          : ""
+                      }`}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
 
-          <button className="login-btn" onClick={handleRegister}>
-            S'inscrire
-          </button>
+            <button className="auth-btn-primary" type="submit" disabled={loading}>
+              {loading ? "Création du compte..." : "S'inscrire"}
+            </button>
 
-          <hr style={{ border: "0.5px solid #ddd", margin: "10px 0" }} />
+            <div className="auth-divider">ou</div>
 
-          <button className="create-btn" onClick={() => navigate("/login")}>
-            Vous avez déjà un compte ?
-          </button>
+            <button
+              type="button"
+              className="auth-btn-secondary"
+              onClick={() => navigate("/login")}
+            >
+              Déjà un compte ? Se connecter
+            </button>
+          </form>
         </div>
       </div>
     </div>

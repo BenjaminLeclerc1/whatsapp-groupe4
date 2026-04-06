@@ -1,13 +1,24 @@
-
-
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useApp } from "../../context/AppContext";
 import "../../components/styles/contacts.css";
 import { useNavigate } from "react-router-dom";
 
 const Contacts = () => {
-  const { users, loading, createChat, getUserById } = useApp(); // Ajout de getUserById
+  const { users, loading, createChat, getUserById, searchUsers } = useApp();
   const [searchTerm, setSearchTerm] = useState("");
+  const debounceRef = useRef(null);
+
+  const handleSearchChange = useCallback((value) => {
+    setSearchTerm(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      searchUsers(value);
+    }, 300);
+  }, [searchUsers]);
+
+  useEffect(() => {
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, []);
   
   const [selectedUser, setSelectedUser] = useState(null);
   const navigate = useNavigate();
@@ -46,13 +57,6 @@ const handleStartChat = async (userId) => {
     }
   };
 
-  const filteredUsers = users.filter(user => 
-    user.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.id?.includes(searchTerm)
-  );
-
-
-  
   return (
     <div className="whatsapp-app">
       <div className="contacts-container">
@@ -69,9 +73,9 @@ const handleStartChat = async (userId) => {
               <span className="material-icons">search</span>
               <input 
                 type="text" 
-                placeholder="Rechercher..." 
+                placeholder="Rechercher par nom ou email..." 
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
               />
             </div>
           </div>
@@ -79,15 +83,15 @@ const handleStartChat = async (userId) => {
           <div className="chat-list">
             {loading ? (
               <div className="loader-container"><div className="loader"></div></div>
-            ) : filteredUsers.map((user) => (
+            ) : users.map((user) => (
               <div key={user.id} className="chat-card contact-item">
                 <div className="card-avatar" onClick={() => handleStartChat(user.id)}>
-                  <img src={`https://ui-avatars.com/api/?name=${user.username}&background=00a884&color=fff`} alt="pfp" />
+                  <img src={`https://ui-avatars.com/api/?name=${user.username}&background=00a884&color=fff`} alt="photo de profil" />
                 </div>
                 
                 <div className="card-info" onClick={() => handleStartChat(user.id)}>
                   <div className="card-row"><span className="chat-name">{user.username}</span></div>
-                  <div className="card-row"><span className="user-uuid">ID: {user.id}</span></div>
+                  <div className="card-row"><span className="user-email">{user.email}</span></div>
                 </div>
 
                 {/* --- REPLACED more_vert WITH ... --- */}
@@ -116,7 +120,7 @@ const handleStartChat = async (userId) => {
                 <p>{selectedUser.username}</p>
               </div>
               <div className="details-info-group">
-                <label>IDENTIFIANT UNIQUE (UUID)</label>
+                <label>IDENTIFIANT UNIQUE</label>
                 <p className="uuid-text">{selectedUser.id}</p>
               </div>
               <button className="action-btn" onClick={() => handleStartChat(selectedUser.id)}>
