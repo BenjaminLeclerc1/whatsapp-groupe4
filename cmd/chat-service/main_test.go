@@ -1,9 +1,37 @@
 package main
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
+
+func TestGetEnv_Default(t *testing.T) {
+	result := getEnv("CHAT_TEST_NONEXISTENT", "default")
+	if result != "default" {
+		t.Errorf("expected 'default', got '%s'", result)
+	}
+}
+
+func TestGetEnv_Set(t *testing.T) {
+	os.Setenv("CHAT_TEST_VAR", "set_value")
+	defer os.Unsetenv("CHAT_TEST_VAR")
+
+	result := getEnv("CHAT_TEST_VAR", "default")
+	if result != "set_value" {
+		t.Errorf("expected 'set_value', got '%s'", result)
+	}
+}
+
+func TestGetEnv_EmptyFallsBack(t *testing.T) {
+	os.Setenv("CHAT_EMPTY_VAR", "")
+	defer os.Unsetenv("CHAT_EMPTY_VAR")
+
+	result := getEnv("CHAT_EMPTY_VAR", "fallback")
+	if result != "fallback" {
+		t.Errorf("expected 'fallback', got '%s'", result)
+	}
+}
 
 func TestMigrationURL_WithoutQueryParam(t *testing.T) {
 	url := "postgres://user:pass@localhost/db"

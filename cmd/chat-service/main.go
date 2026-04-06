@@ -66,7 +66,15 @@ func main() {
 		api.POST("", handler.CreateChat)
 		api.POST("/", handler.CreateChat)
 	}
-	r.Run(":8088")
+	port := getEnv("PORT", "8088")
+	r.Run(":" + port)
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }
 
 func initDB(databaseURL string) (*pgxpool.Pool, error) {
