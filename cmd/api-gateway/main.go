@@ -1,8 +1,10 @@
 package main
 
 import (
+	"io"
 	// "errors"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -73,6 +75,22 @@ func main() {
 	jwtSecret := getEnv("JWT_SECRET", "whatsapp-groupe4-secret-default")
 
 	// 4. Routes
+	authServiceURL := getEnv("AUTH_SERVICE_URL", "http://localhost:8084")
+	userServiceURL := getEnv("USER_SERVICE_URL", "http://localhost:8081")
+	chatServiceURL := getEnv("CHAT_SERVICE_URL", "http://localhost:8088")
+	messageServiceURL := getEnv("MESSAGE_SERVICE_URL", "http://localhost:8082")
+	wsGatewayURL := getEnv("WS_GATEWAY_URL", "http://localhost:8089")
+	jwtSecret := requireEnv("JWT_SECRET")
+
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "healthy",
+			"service": "api-gateway",
+		})
+	})
+
+	router.GET("/ws", wsProxyHandler(wsGatewayURL))
+
 	api := router.Group("/api/v1")
 	{
 		// PUBLIC
@@ -120,8 +138,55 @@ func proxyHandler(targetURL string) gin.HandlerFunc {
 	}
 }
 
-func authMiddleware(jwtSecret string) gin.HandlerFunc {
+// wsProxyHandler tunnels WebSocket connections to ws-gateway by hijacking
+// the raw TCP connection. This preserves the hop-by-hop headers (Connection,
+// Upgrade) that httputil.ReverseProxy would strip, giving a transparent proxy
+// with zero per-frame overhead.
+func wsProxyHandler(target string) gin.HandlerFunc {
+	u, _ := url.Parse(target)
 	return func(c *gin.Context) {
+		backend, err := net.DialTimeout("tcp", u.Host, 5*time.Second)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "service unavailable"})
+			return
+		}
+
+		hijacker, ok := c.Writer.(http.Hijacker)
+		if !ok {
+			backend.Close()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
+		}
+
+		_ = c.Request.Write(backend)
+
+		clientConn, _, err := hijacker.Hijack()
+		if err != nil {
+			backend.Close()
+			return
+		}
+
+		go func() {
+			_, _ = io.Copy(backend, clientConn)
+			backend.Close()
+		}()
+		_, _ = io.Copy(clientConn, backend)
+		clientConn.Close()
+	}
+}
+
+// wsProxyHandler tunnels WebSocket connections to ws-gateway by hijacking
+// the raw TCP connection. This preserves the hop-by-hop headers (Connection,
+// Upgrade) that httputil.ReverseProxy would strip, giving a transparent proxy
+// with zero per-frame overhead.
+func wsProxyHandler(target string) gin.HandlerFunc {
+	u, _ := url.Parse(target)
+	return func(c *gin.Context) {
+		if c.Request.Method == "OPTIONS" {
+			c.Next()
+			return
+		}
+
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token missing"})
