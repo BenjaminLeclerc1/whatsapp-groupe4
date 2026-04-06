@@ -373,20 +373,35 @@ func main() {
 	chatServiceURL := getEnv("CHAT_SERVICE_URL", "http://localhost:8088")
 	jwtSecret      := getEnv("JWT_SECRET", "whatsapp-groupe4-secret-change-in-prod")
 
-	api := router.Group("/api/v1")
-    {
-        api.Any("/auth/*path", proxyHandler(authServiceURL))
+	// Service URLs for other services (from Terraform env vars)
+	messageServiceURL      := getEnv("MESSAGE_SERVICE_URL", "http://localhost:8082")
+	presenceServiceURL     := getEnv("PRESENCE_SERVICE_URL", "http://localhost:8083")
+	searchServiceURL       := getEnv("SEARCH_SERVICE_URL", "http://localhost:8084")
+	notificationServiceURL := getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8085")
+	channelServiceURL      := getEnv("CHANNEL_SERVICE_URL", "http://localhost:8087")
 
-        protected := api.Group("/", authMiddleware(jwtSecret))
-        {
-            protected.Any("/users/*path", proxyHandler(userServiceURL))
-            
-            // ✅ FIX: Explicitly handle "/chats" WITHOUT a wildcard 
-            // and then handle sub-paths WITH the wildcard.
-            protected.Any("/chats", proxyHandler(chatServiceURL))       // Matches /api/v1/chats
-            protected.Any("/chats/*path", proxyHandler(chatServiceURL)) // Matches /api/v1/chats/123
-        }
-    }
+	api := router.Group("/api/v1")
+	{
+		// --- Routes publiques (pas de JWT requis) ---
+		api.Any("/auth/*path", proxyHandler(authServiceURL))
+		api.Any("/search/*path", proxyHandler(searchServiceURL))
+		api.POST("/users/register", proxyHandler(userServiceURL))
+		api.POST("/users/login", proxyHandler(userServiceURL))
+		api.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
+
+		// --- Routes protégées (JWT requis) ---
+		protected := api.Group("/", authMiddleware(jwtSecret))
+		{
+			protected.Any("/users/*path", proxyHandler(userServiceURL))
+			protected.Any("/chats", proxyHandler(chatServiceURL))
+			protected.Any("/chats/*path", proxyHandler(chatServiceURL))
+			protected.Any("/messages", proxyHandler(messageServiceURL))
+			protected.Any("/messages/*path", proxyHandler(messageServiceURL))
+			protected.Any("/presence/*path", proxyHandler(presenceServiceURL))
+			protected.Any("/notification/*path", proxyHandler(notificationServiceURL))
+			protected.Any("/channels/*path", proxyHandler(channelServiceURL))
+		}
+	}
 	port := getEnv("API_GATEWAY_PORT", "8080")
 	log.Printf("Gateway running on port %s", port)
 	router.Run(":" + port)
