@@ -37,6 +37,8 @@ const (
 	userID1         = "user-1"
 	userID99        = "user-99"
 	testSecret      = "unit-test-jwt-key"
+	testPassword    = "UnitP@ssw0rd!2026"
+	testPasswordAlt = "UnitP@ssw0rd!2026-alt"
 	testUserEmail   = "user@test.com"
 	testUTestEmail  = "u@test.com"
 	aliceEmail      = "alice@example.com"
@@ -77,24 +79,30 @@ func (r *mockRow) Scan(dest ...any) error {
 		if i >= len(r.vals) {
 			break
 		}
-		switch v := d.(type) {
-		case *string:
-			if s, ok := r.vals[i].(string); ok {
-				*v = s
-			}
-		case *time.Time:
-			if t, ok := r.vals[i].(time.Time); ok {
-				*v = t
-			}
-		case **time.Time:
-			if r.vals[i] == nil {
-				*v = nil
-			} else if t, ok := r.vals[i].(time.Time); ok {
-				*v = &t
-			}
-		}
+		assignMockRowValue(d, r.vals[i])
 	}
 	return nil
+}
+
+func assignMockRowValue(dest, value any) {
+	switch v := dest.(type) {
+	case *string:
+		if s, ok := value.(string); ok {
+			*v = s
+		}
+	case *time.Time:
+		if t, ok := value.(time.Time); ok {
+			*v = t
+		}
+	case **time.Time:
+		if value == nil {
+			*v = nil
+			return
+		}
+		if t, ok := value.(time.Time); ok {
+			*v = &t
+		}
+	}
 }
 
 // mockTx implémente txDB pour les tests
@@ -541,7 +549,7 @@ func TestRegister_PasswordTooShort(t *testing.T) {
 func TestRegister_ValidInput_NilPool(t *testing.T) {
 	r := setupHandlerRouter()
 	w := postJSON(r, authRegisterPath, map[string]string{
-		"username": "alice", "email": aliceEmail, "password": "password123",
+		"username": "alice", "email": aliceEmail, "password": testPassword,
 	})
 	if w.Code == http.StatusBadRequest {
 		t.Errorf("valid input should pass validation, not 400")
@@ -556,7 +564,7 @@ func TestRegister_DBError(t *testing.T) {
 	pool := &mockPool{execErrors: []error{nil, errors.New("db error")}}
 	r := setupRouterWithPool(pool, "secret")
 	w := postJSON(r, authRegisterPath, map[string]string{
-		"username": "bob", "email": "bob@test.com", "password": "secret123",
+		"username": "bob", "email": "bob@test.com", "password": testPasswordAlt,
 	})
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500 on DB error, got %d", w.Code)
@@ -570,7 +578,7 @@ func TestRegister_Success(t *testing.T) {
 	pool := &mockPool{execErrors: []error{nil, nil, nil}}
 	r := setupRouterWithPool(pool, "secret")
 	w := postJSON(r, authRegisterPath, map[string]string{
-		"username": "alice", "email": aliceTestEmail, "password": "password123",
+		"username": "alice", "email": aliceTestEmail, "password": testPassword,
 	})
 	if w.Code != http.StatusCreated {
 		t.Errorf("expected 201 on success, got %d (body: %s)", w.Code, w.Body.String())
@@ -584,7 +592,7 @@ func TestRegister_RefreshTokenInsertError(t *testing.T) {
 	pool := &mockPool{execErrors: []error{nil, nil, errors.New("refresh insert failed")}}
 	r := setupRouterWithPool(pool, "secret")
 	w := postJSON(r, authRegisterPath, map[string]string{
-		"username": "carol", "email": "carol@test.com", "password": "password123",
+		"username": "carol", "email": "carol@test.com", "password": testPassword,
 	})
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500 on refresh insert error, got %d", w.Code)
@@ -606,7 +614,7 @@ func TestLogin_MissingFields(t *testing.T) {
 func TestLogin_ValidInput_NilPool(t *testing.T) {
 	r := setupHandlerRouter()
 	w := postJSON(r, authLoginPath, map[string]string{
-		"email": aliceEmail, "password": "password123",
+		"email": aliceEmail, "password": testPassword,
 	})
 	if w.Code == http.StatusBadRequest {
 		t.Error("valid input should pass validation")
@@ -620,7 +628,7 @@ func TestLogin_UserNotFound(t *testing.T) {
 	}
 	r := setupRouterWithPool(pool, "secret")
 	w := postJSON(r, authLoginPath, map[string]string{
-		"email": "unknown@test.com", "password": "password123",
+		"email": "unknown@test.com", "password": testPassword,
 	})
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401 for unknown user, got %d", w.Code)
@@ -628,7 +636,7 @@ func TestLogin_UserNotFound(t *testing.T) {
 }
 
 func TestLogin_WrongPassword(t *testing.T) {
-	realHash, _ := bcrypt.GenerateFromPassword([]byte("correct-password"), bcrypt.MinCost)
+	realHash, _ := bcrypt.GenerateFromPassword([]byte(testPassword), bcrypt.MinCost)
 	pool := &mockPool{
 		execErrors: []error{nil},
 		queryRows: []*mockRow{{vals: []any{
@@ -637,7 +645,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 	}
 	r := setupRouterWithPool(pool, "secret")
 	w := postJSON(r, authLoginPath, map[string]string{
-		"email": aliceTestEmail, "password": "wrong-password",
+		"email": aliceTestEmail, "password": testPasswordAlt,
 	})
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401 for wrong password, got %d", w.Code)
@@ -645,7 +653,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 }
 
 func TestLogin_Success(t *testing.T) {
-	realHash, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.MinCost)
+	realHash, _ := bcrypt.GenerateFromPassword([]byte(testPassword), bcrypt.MinCost)
 	pool := &mockPool{
 		execErrors: []error{nil, nil}, // deleteExpired + INSERT refresh
 		queryRows: []*mockRow{{vals: []any{
@@ -654,7 +662,7 @@ func TestLogin_Success(t *testing.T) {
 	}
 	r := setupRouterWithPool(pool, "secret")
 	w := postJSON(r, authLoginPath, map[string]string{
-		"email": aliceTestEmail, "password": "password123",
+		"email": aliceTestEmail, "password": testPassword,
 	})
 	if w.Code != http.StatusOK {
 		t.Errorf("expected 200 on successful login, got %d (body: %s)", w.Code, w.Body.String())
@@ -667,7 +675,7 @@ func TestLogin_Success(t *testing.T) {
 }
 
 func TestLogin_RefreshInsertError(t *testing.T) {
-	realHash, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.MinCost)
+	realHash, _ := bcrypt.GenerateFromPassword([]byte(testPassword), bcrypt.MinCost)
 	pool := &mockPool{
 		execErrors: []error{nil, errors.New("refresh insert failed")}, // deleteExpired ok, INSERT refresh échoue
 		queryRows: []*mockRow{{vals: []any{
@@ -676,7 +684,7 @@ func TestLogin_RefreshInsertError(t *testing.T) {
 	}
 	r := setupRouterWithPool(pool, "secret")
 	w := postJSON(r, authLoginPath, map[string]string{
-		"email": aliceTestEmail, "password": "password123",
+		"email": aliceTestEmail, "password": testPassword,
 	})
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500 on refresh insert error, got %d (body: %s)", w.Code, w.Body.String())
@@ -924,7 +932,7 @@ func TestRegister_UniqueViolation(t *testing.T) {
 	pool := &mockPool{execErrors: []error{nil, pgErr}}
 	r := setupRouterWithPool(pool, "secret")
 	w := postJSON(r, authRegisterPath, map[string]string{
-		"username": "alice", "email": aliceTestEmail, "password": "password123",
+		"username": "alice", "email": aliceTestEmail, "password": testPassword,
 	})
 	if w.Code != http.StatusConflict {
 		t.Errorf("expected 409 for unique violation, got %d (body: %s)", w.Code, w.Body.String())
@@ -1012,7 +1020,7 @@ func TestRegister_BCryptError(t *testing.T) {
 	pool := &mockPool{execErrors: []error{nil}} // deleteExpiredRefreshTokens
 	r := setupRouterWithPool(pool, "secret")
 	w := postJSON(r, "/api/v1/auth/register", map[string]string{
-		"username": "alice", "email": "alice@test.com", "password": "password123",
+		"username": "alice", "email": "alice@test.com", "password": testPassword,
 	})
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500 on bcrypt error, got %d", w.Code)
@@ -1030,7 +1038,7 @@ func TestRegister_JWTError(t *testing.T) {
 	pool := &mockPool{execErrors: []error{nil, nil}}
 	r := setupRouterWithPool(pool, "secret")
 	w := postJSON(r, authRegisterPath, map[string]string{
-		"username": "alice", "email": aliceTestEmail, "password": "password123",
+		"username": "alice", "email": aliceTestEmail, "password": testPassword,
 	})
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500 on JWT error in register, got %d", w.Code)
@@ -1048,7 +1056,7 @@ func TestRegister_RefreshTokenGenError(t *testing.T) {
 	pool := &mockPool{execErrors: []error{nil, nil}}
 	r := setupRouterWithPool(pool, "secret")
 	w := postJSON(r, authRegisterPath, map[string]string{
-		"username": "alice", "email": aliceTestEmail, "password": "password123",
+		"username": "alice", "email": aliceTestEmail, "password": testPassword,
 	})
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500 on refresh token gen error in register, got %d", w.Code)
@@ -1062,7 +1070,7 @@ func TestLogin_JWTError(t *testing.T) {
 		return "", errors.New(jwtForcedErrorMsg)
 	}
 
-	realHash, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.MinCost)
+	realHash, _ := bcrypt.GenerateFromPassword([]byte(testPassword), bcrypt.MinCost)
 	pool := &mockPool{
 		execErrors: []error{nil},
 		queryRows: []*mockRow{{vals: []any{
@@ -1071,7 +1079,7 @@ func TestLogin_JWTError(t *testing.T) {
 	}
 	r := setupRouterWithPool(pool, "secret")
 	w := postJSON(r, authLoginPath, map[string]string{
-		"email": aliceTestEmail, "password": "password123",
+		"email": aliceTestEmail, "password": testPassword,
 	})
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500 on JWT error in login, got %d", w.Code)
@@ -1085,7 +1093,7 @@ func TestLogin_RefreshTokenGenError(t *testing.T) {
 		return "", "", errors.New(randForcedErrorMsg)
 	}
 
-	realHash, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.MinCost)
+	realHash, _ := bcrypt.GenerateFromPassword([]byte(testPassword), bcrypt.MinCost)
 	pool := &mockPool{
 		execErrors: []error{nil},
 		queryRows: []*mockRow{{vals: []any{
@@ -1094,7 +1102,7 @@ func TestLogin_RefreshTokenGenError(t *testing.T) {
 	}
 	r := setupRouterWithPool(pool, "secret")
 	w := postJSON(r, authLoginPath, map[string]string{
-		"email": aliceTestEmail, "password": "password123",
+		"email": aliceTestEmail, "password": testPassword,
 	})
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("expected 500 on refresh token gen error in login, got %d", w.Code)

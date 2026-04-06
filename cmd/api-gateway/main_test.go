@@ -320,7 +320,7 @@ func TestProxyHandler_WithUserID(t *testing.T) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200, got %d", resp.StatusCode)
+		t.Errorf(errExpected200Format, resp.StatusCode)
 	}
 	if receivedUserID != "user-abc" {
 		t.Errorf("expected X-User-ID='user-abc', got '%s'", receivedUserID)
@@ -367,7 +367,7 @@ func TestProxyHandler_ForwardsPathToBackend(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		t.Errorf("expected 200, got %d", resp.StatusCode)
+		t.Errorf(errExpected200Format, resp.StatusCode)
 	}
 	if gotPath != wantPath {
 		t.Errorf("unexpected path forwarded: %q want %q", gotPath, wantPath)

@@ -7,6 +7,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+const unexpectedErrFmt = "unexpected error: %v"
+
 func TestGenerateToken_Success(t *testing.T) {
 	token, err := GenerateToken("user-123", "user", "my-secret-key")
 	if err != nil {
@@ -32,7 +34,7 @@ func TestGenerateToken_EmptySecret(t *testing.T) {
 func TestGenerateToken_AdminRole(t *testing.T) {
 	token, err := GenerateToken("admin-1", "admin", "secret")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(unexpectedErrFmt, err)
 	}
 
 	// Parse et vérifie les claims
@@ -58,7 +60,7 @@ func TestGenerateToken_AdminRole(t *testing.T) {
 func TestGenerateToken_ClaimsUserID(t *testing.T) {
 	token, err := GenerateToken("user-456", "user", "another-secret")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(unexpectedErrFmt, err)
 	}
 
 	parsed, err := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
@@ -77,7 +79,7 @@ func TestGenerateToken_ClaimsUserID(t *testing.T) {
 func TestGenerateToken_WrongSecret(t *testing.T) {
 	token, err := GenerateToken("user-1", "user", "correct-secret")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf(unexpectedErrFmt, err)
 	}
 
 	// Tenter de parser avec un mauvais secret doit échouer

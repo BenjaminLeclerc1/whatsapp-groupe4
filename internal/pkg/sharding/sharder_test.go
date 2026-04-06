@@ -4,6 +4,8 @@ import (
 	"testing"
 )
 
+const anyID = "any-id"
+
 func TestGetShardNode_InRange(t *testing.T) {
 	totalShards := 4
 	ids := []string{"user-1", "user-2", "chat-abc", "msg-xyz", "hello-world"}
@@ -17,21 +19,21 @@ func TestGetShardNode_InRange(t *testing.T) {
 }
 
 func TestGetShardNode_ZeroShards(t *testing.T) {
-	result := GetShardNode("any-id", 0)
+	result := GetShardNode(anyID, 0)
 	if result != 0 {
 		t.Errorf("expected 0 for totalShards=0, got %d", result)
 	}
 }
 
 func TestGetShardNode_NegativeShards(t *testing.T) {
-	result := GetShardNode("any-id", -1)
+	result := GetShardNode(anyID, -1)
 	if result != 0 {
 		t.Errorf("expected 0 for negative totalShards, got %d", result)
 	}
 }
 
 func TestGetShardNode_OneShard(t *testing.T) {
-	result := GetShardNode("any-id", 1)
+	result := GetShardNode(anyID, 1)
 	if result != 0 {
 		t.Errorf("expected 0 for single shard, got %d", result)
 	}
