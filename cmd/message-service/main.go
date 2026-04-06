@@ -28,7 +28,7 @@
 
 //     // --- FIX STARTS HERE ---
 //     // Get the URL once at the top of main
-//     databaseURL := getEnv("DATABASE_URL", "postgres://whatsapp:whatsapp_secret@localhost:5432/whatsapp_db?sslmode=disable")
+//     databaseURL := getEnv("DATABASE_URL", "postgres://<user>:<password>@localhost:5432/whatsapp_db?sslmode=disable")
 
 //     // 2. Initialize Database (Pass the URL into initDB now)
 //     pool, err := initDB(databaseURL) 
@@ -180,8 +180,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres" // required for migrate postgres driver registration
+	_ "github.com/golang-migrate/migrate/v4/source/file"       // required for migrate file source registration
 
 	"github.com/whatsapp-groupe4/internal/logger"
 	"github.com/whatsapp-groupe4/internal/messages"

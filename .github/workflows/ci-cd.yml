@@ -45,7 +45,8 @@ jobs:
           cache-dependency-path: go.sum
 
       - run: go mod download
-      - run: go test ./cmd/... ./internal/... -count=1 -short -coverprofile=coverage.out -covermode=atomic
+      # Inclure middleware/ (jwt) dans le rapport de couverture envoyé à SonarCloud.
+      - run: go test ./cmd/... ./internal/... ./middleware/... -count=1 -short -coverprofile=coverage.out -covermode=atomic
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4

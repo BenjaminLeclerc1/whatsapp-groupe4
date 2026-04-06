@@ -34,6 +34,8 @@ var (
 	mu            sync.RWMutex
 )
 
+const errNotificationNotFound = "Notification non trouvée"
+
 func main() {
 	logger.Init("notification-service")
 	defer logger.Close()
@@ -170,7 +172,7 @@ func getNotificationByID(c *gin.Context) {
 	mu.RUnlock()
 
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Notification non trouvée"})
+		c.JSON(http.StatusNotFound, gin.H{"error": errNotificationNotFound})
 		return
 	}
 
@@ -231,7 +233,7 @@ func markAsRead(c *gin.Context) {
 
 	notif, exists := notifications[id]
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Notification non trouvée"})
+		c.JSON(http.StatusNotFound, gin.H{"error": errNotificationNotFound})
 		return
 	}
 
@@ -275,7 +277,7 @@ func deleteNotification(c *gin.Context) {
 
 	notif, exists := notifications[id]
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Notification non trouvée"})
+		c.JSON(http.StatusNotFound, gin.H{"error": errNotificationNotFound})
 		return
 	}
 
