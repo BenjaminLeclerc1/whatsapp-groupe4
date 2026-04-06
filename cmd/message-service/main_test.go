@@ -39,6 +39,14 @@ func TestGetEnv_Port(t *testing.T) {
 	}
 }
 
+func TestGetEnv_PortOverride(t *testing.T) {
+	os.Setenv("PORT", "9090")
+	defer os.Unsetenv("PORT")
+	if got := getEnv("PORT", "8082"); got != "9090" {
+		t.Errorf("expected override 9090, got %q", got)
+	}
+}
+
 // ─── requireEnv — chemin succès ───────────────────────────────────────────────
 
 func TestRequireEnv_Set(t *testing.T) {

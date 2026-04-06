@@ -42,6 +42,13 @@ func TestRequireEnv_Set(t *testing.T) {
 	}
 }
 
+func TestGetEnv_DefaultPort(t *testing.T) {
+	os.Unsetenv("PORT")
+	if got := getEnv("PORT", "8085"); got != "8085" {
+		t.Errorf("expected default 8085, got %q", got)
+	}
+}
+
 // ─── initDB ───────────────────────────────────────────────────────────────────
 
 func TestInitDB_InvalidURL(t *testing.T) {

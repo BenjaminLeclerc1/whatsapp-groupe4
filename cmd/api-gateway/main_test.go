@@ -101,6 +101,18 @@ func TestAuthMiddleware_ShortHeader(t *testing.T) {
 	}
 }
 
+func TestAuthMiddleware_BearerPrefixOnly(t *testing.T) {
+	// "Bearer " fait 7 caractères : len < 8 → 401
+	r := setupGatewayRouter("secret")
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/users/list", nil)
+	req.Header.Set("Authorization", "Bearer ")
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
 func TestAuthMiddleware_InvalidToken(t *testing.T) {
 	r := setupGatewayRouter("secret")
 	w := httptest.NewRecorder()
@@ -318,6 +330,34 @@ func TestProxyHandler_InvalidTarget(t *testing.T) {
 	// Connexion refusée → 502 Bad Gateway
 	if resp.StatusCode < 500 {
 		t.Logf("proxy to invalid target returned %d (acceptable)", resp.StatusCode)
+	}
+}
+
+func TestProxyHandler_ForwardsPathToBackend(t *testing.T) {
+	var gotPath string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	const wantPath = "/api/v1/users/profile/detail"
+	ginRouter := gin.New()
+	ginRouter.GET(wantPath, proxyHandler(backend.URL))
+
+	srv := httptest.NewServer(ginRouter)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + wantPath)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+	if gotPath != wantPath {
+		t.Errorf("unexpected path forwarded: %q want %q", gotPath, wantPath)
 	}
 }
 

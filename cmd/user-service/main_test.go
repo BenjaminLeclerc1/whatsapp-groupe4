@@ -191,10 +191,8 @@ func TestLogin_InvalidEmail(t *testing.T) {
 	r.POST("/login", app.login)
 
 	body, _ := json.Marshal(map[string]string{"email": "notvalid", "password": "pass"})
-	b, _ := json.Marshal(body)
-
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBuffer(b))
+	req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(w, req)
 

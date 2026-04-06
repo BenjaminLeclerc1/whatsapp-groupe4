@@ -33,6 +33,13 @@ func TestGetEnv_EmptyFallsBack(t *testing.T) {
 	}
 }
 
+func TestGetEnv_DefaultPort(t *testing.T) {
+	os.Unsetenv("PORT")
+	if got := getEnv("PORT", "8088"); got != "8088" {
+		t.Errorf("expected default 8088, got %q", got)
+	}
+}
+
 func TestMigrationURL_WithoutQueryParam(t *testing.T) {
 	url := "postgres://user:pass@localhost/db"
 	var result string

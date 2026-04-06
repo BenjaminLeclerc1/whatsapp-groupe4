@@ -269,6 +269,77 @@ func TestIndexMessage_SetsCreatedAt(t *testing.T) {
 	}
 }
 
+func TestIndexMessage_InvalidJSON(t *testing.T) {
+	clearSearchIndex()
+	r := setupSearchRouter()
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/search/index", bytes.NewBufferString(`{broken`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestGetEnv_EmptyStringUsesDefault(t *testing.T) {
+	os.Setenv("SEARCH_EMPTY_ENV", "")
+	defer os.Unsetenv("SEARCH_EMPTY_ENV")
+	if got := getEnv("SEARCH_EMPTY_ENV", "defaulted"); got != "defaulted" {
+		t.Errorf("expected defaulted, got %q", got)
+	}
+}
+
+func TestPerformSearch_FilterByChatAndUser(t *testing.T) {
+	clearSearchIndex()
+	mu.Lock()
+	messages["m1"] = Message{ID: "m1", Content: "hello", ChatID: "c1", SenderID: "u1"}
+	invertedIndex["hello"] = []string{"m1"}
+	mu.Unlock()
+
+	if n := len(performSearch("hello", "c1", "u1")); n != 1 {
+		t.Errorf("expected 1 result when chat+user match, got %d", n)
+	}
+	if n := len(performSearch("hello", "c1", "u2")); n != 0 {
+		t.Errorf("expected 0 when user mismatches, got %d", n)
+	}
+}
+
+func TestPerformSearch_ScoreCombinesMultipleQueryTerms(t *testing.T) {
+	clearSearchIndex()
+	mu.Lock()
+	messages["m1"] = Message{ID: "m1", Content: "alpha beta", ChatID: "c", SenderID: "u"}
+	invertedIndex["alpha"] = []string{"m1"}
+	invertedIndex["beta"] = []string{"m1"}
+	mu.Unlock()
+	results := performSearch("alpha beta", "", "")
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Score < 2 {
+		t.Errorf("expected score >= 2 for two matching terms, got %d", results[0].Score)
+	}
+}
+
+func TestIndexMessage_DeduplicatesInvertedIndexPerWord(t *testing.T) {
+	clearSearchIndex()
+	r := setupSearchRouter()
+	msg := Message{ID: "dup-1", Content: "same same", ChatID: "c", SenderID: "u"}
+	body, _ := json.Marshal(msg)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/search/index", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	mu.RLock()
+	n := len(invertedIndex["same"])
+	mu.RUnlock()
+	if n != 1 {
+		t.Errorf("expected one message id for token 'same', got %d entries", n)
+	}
+}
+
 // ─── searchMessages handler ───────────────────────────────────────────────────
 
 func TestSearchMessages_NoQuery(t *testing.T) {
