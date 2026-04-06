@@ -29,7 +29,7 @@
 FROM golang:1.24-alpine AS builder
 
 # Install git and build tools
-RUN apk add --no-cache git gcc musl-dev ca-certificates
+RUN apk add --no-cache ca-certificates gcc git musl-dev
 
 # Set Go proxy (avoids TLS handshake timeouts)
 ENV GOPROXY=https://goproxy.io,direct
