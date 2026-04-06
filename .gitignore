@@ -38,3 +38,9 @@ logs/
 
 # Docker
 .docker/
+
+# Terraform (cache providers ~200 Mo, état et secrets locaux)
+**/.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars

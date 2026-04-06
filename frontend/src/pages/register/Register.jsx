@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import axios from "axios";
+import { API_BASE_URL } from "../../config";
 import { useNavigate } from "react-router-dom";
 import "../../components/styles/login.css"; // Reuse your existing login CSS
 import logo from "../../components/assets/logo.png";
@@ -43,11 +44,10 @@ function Register() {
     }
 
     try {
-      const apiUrl =
-        process.env.REACT_APP_API_URL_AUTH || "http://localhost:8081/api/v1";
-
-      // Axios call to your Go backend
-      const response = await axios.post(`${apiUrl}/users/register`, formData);
+      const response = await axios.post(
+        `${API_BASE_URL}/users/register`,
+        formData,
+      );
 
       // user-service renvoie l'utilisateur créé (sans JWT) : connexion via /login ensuite
       const id = response.data.id;

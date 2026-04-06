@@ -1,0 +1,21 @@
+# À la racine du dépôt :
+#   kubectl apply -k loadtest
+#
+# (Kustomize n’autorise pas les fichiers hors du dossier du kustomization.yaml,
+#  d’où ce fichier dans loadtest/ plutôt que loadtest/k8s/.)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: k6-loadtest
+
+resources:
+  - k8s/namespace.yaml
+  - k8s/testrun.yaml
+
+configMapGenerator:
+  - name: whatsapp-k6-health-script
+    files:
+      - benchmark_10k_health.js=k6/benchmark_10k_health.js
+
+generatorOptions:
+  disableNameSuffixHash: true

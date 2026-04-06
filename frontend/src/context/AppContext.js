@@ -1,6 +1,7 @@
 
 import React, { createContext, useState, useEffect, useCallback, useMemo, useContext } from "react";
 import axios from "axios";
+import { API_BASE_URL } from "../config";
 
 const AppContext = createContext();
 
@@ -13,8 +14,8 @@ export const AppProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
 
   const currentUserId = localStorage.getItem("user_id");
-  const apiUrl = "http://localhost:8080/api/v1";
-  const userApiUrl = "http://localhost:8081/api/v1";
+  const apiUrl = API_BASE_URL;
+  const userApiUrl = API_BASE_URL;
 
   // Memoized Headers
   // const authHeaders = useMemo(() => {

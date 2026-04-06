@@ -23,11 +23,7 @@ function Login() {
     // ... (Your regex validation remains the same) ...
 
     try {
-      // Ensure this URL is exactly http://localhost:8080/api/v1
-      const apiUrl =
-        process.env.REACT_APP_API_URL_AUTH || "http://localhost:8081/api/v1";
-
-      const response = await api.post(`${apiUrl}/users/login`, {
+      const response = await api.post("/users/login", {
         email: email,
         password: password,
       });
