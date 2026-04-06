@@ -36,7 +36,9 @@ func TestPgRepository_CreateChannel(t *testing.T) {
 	ts := time.Now()
 	rows := pgxmock.NewRows([]string{"id", "name", "description", "is_group", "owner_id", "max_members", "created_at"}).
 		AddRow("ch1", "name", "", true, "o1", 100, ts)
-	exp.ExpectQuery(`INSERT INTO chats`).WillReturnRows(rows)
+	exp.ExpectQuery(`INSERT INTO chats`).
+		WithArgs("name", "", true, "o1", 100).
+		WillReturnRows(rows)
 
 	repo := NewRepository(mock)
 	ch := Channel{Name: "name", Description: "", IsGroup: true, OwnerID: "o1", MaxMembers: 100}
@@ -56,7 +58,9 @@ func TestPgRepository_GetChannelByID_NotFound(t *testing.T) {
 	mock, exp, done := newChanMock(t)
 	defer done()
 
-	exp.ExpectQuery(`FROM chats WHERE id`).WillReturnError(pgx.ErrNoRows)
+	exp.ExpectQuery(`FROM chats WHERE id`).
+		WithArgs("id1").
+		WillReturnError(pgx.ErrNoRows)
 
 	repo := NewRepository(mock)
 	_, err := repo.GetChannelByID(context.Background(), "id1")
@@ -72,7 +76,9 @@ func TestPgRepository_GetChannelByID_OK(t *testing.T) {
 	ts := time.Now()
 	rows := pgxmock.NewRows([]string{"id", "name", "description", "is_group", "owner_id", "max_members", "created_at"}).
 		AddRow("ch1", "n", "", true, "o1", 100, ts)
-	exp.ExpectQuery(`FROM chats WHERE id`).WillReturnRows(rows)
+	exp.ExpectQuery(`FROM chats WHERE id`).
+		WithArgs("ch1").
+		WillReturnRows(rows)
 
 	repo := NewRepository(mock)
 	ch, err := repo.GetChannelByID(context.Background(), "ch1")
@@ -88,7 +94,9 @@ func TestPgRepository_UpdateChannel_NotFound(t *testing.T) {
 	mock, exp, done := newChanMock(t)
 	defer done()
 
-	exp.ExpectQuery(`UPDATE chats`).WillReturnError(pgx.ErrNoRows)
+	exp.ExpectQuery(`UPDATE chats`).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), "id1").
+		WillReturnError(pgx.ErrNoRows)
 
 	repo := NewRepository(mock)
 	_, err := repo.UpdateChannel(context.Background(), "id1", UpdateChannelRequest{})
@@ -101,7 +109,9 @@ func TestPgRepository_DeleteChannel_NoRows(t *testing.T) {
 	mock, exp, done := newChanMock(t)
 	defer done()
 
-	exp.ExpectExec(`DELETE FROM chats WHERE id`).WillReturnResult(pgxmock.NewResult("DELETE", 0))
+	exp.ExpectExec(`DELETE FROM chats WHERE id`).
+		WithArgs("id1").
+		WillReturnResult(pgxmock.NewResult("DELETE", 0))
 
 	repo := NewRepository(mock)
 	err := repo.DeleteChannel(context.Background(), "id1")
@@ -115,7 +125,9 @@ func TestPgRepository_ListChannelsByUser(t *testing.T) {
 	defer done()
 
 	rows := pgxmock.NewRows([]string{"id", "name", "description", "is_group", "owner_id", "max_members", "created_at", "member_count"})
-	exp.ExpectQuery(`SELECT c.id, c.name`).WillReturnRows(rows)
+	exp.ExpectQuery(`SELECT c.id, c.name`).
+		WithArgs("u1").
+		WillReturnRows(rows)
 
 	repo := NewRepository(mock)
 	list, err := repo.ListChannelsByUser(context.Background(), "u1")
@@ -134,7 +146,9 @@ func TestPgRepository_AddMember_AlreadyMember(t *testing.T) {
 	mock, exp, done := newChanMock(t)
 	defer done()
 
-	exp.ExpectQuery(`INSERT INTO chat_participants`).WillReturnError(pgx.ErrNoRows)
+	exp.ExpectQuery(`INSERT INTO chat_participants`).
+		WithArgs("c1", "u1").
+		WillReturnError(pgx.ErrNoRows)
 
 	repo := NewRepository(mock)
 	_, err := repo.AddMember(context.Background(), "c1", "u1")
@@ -147,7 +161,9 @@ func TestPgRepository_RemoveMember_NotFound(t *testing.T) {
 	mock, exp, done := newChanMock(t)
 	defer done()
 
-	exp.ExpectExec(`DELETE FROM chat_participants`).WillReturnResult(pgxmock.NewResult("DELETE", 0))
+	exp.ExpectExec(`DELETE FROM chat_participants`).
+		WithArgs("c1", "u1").
+		WillReturnResult(pgxmock.NewResult("DELETE", 0))
 
 	repo := NewRepository(mock)
 	err := repo.RemoveMember(context.Background(), "c1", "u1")
@@ -175,7 +191,9 @@ func TestPgRepository_CountMembers(t *testing.T) {
 	defer done()
 
 	rows := pgxmock.NewRows([]string{"count"}).AddRow(3)
-	exp.ExpectQuery(`COUNT\(\*\) FROM chat_participants WHERE chat_id`).WillReturnRows(rows)
+	exp.ExpectQuery(`COUNT\(\*\) FROM chat_participants WHERE chat_id`).
+		WithArgs("c1").
+		WillReturnRows(rows)
 
 	repo := NewRepository(mock)
 	n, err := repo.CountMembers(context.Background(), "c1")
@@ -189,7 +207,9 @@ func TestPgRepository_ListMembers(t *testing.T) {
 	defer done()
 
 	rows := pgxmock.NewRows([]string{"chat_id", "user_id", "joined_at"})
-	exp.ExpectQuery(`SELECT chat_id, user_id, joined_at`).WillReturnRows(rows)
+	exp.ExpectQuery(`SELECT chat_id, user_id, joined_at`).
+		WithArgs("c1").
+		WillReturnRows(rows)
 
 	repo := NewRepository(mock)
 	list, err := repo.ListMembers(context.Background(), "c1")
@@ -206,7 +226,9 @@ func TestPgRepository_ListMessages_NoCursor(t *testing.T) {
 	defer done()
 
 	rows := pgxmock.NewRows([]string{"id", "sender_id", "chat_id", "content", "status", "created_at"})
-	exp.ExpectQuery(`FROM messages`).WillReturnRows(rows)
+	exp.ExpectQuery(`FROM messages`).
+		WithArgs("c1", 10).
+		WillReturnRows(rows)
 
 	repo := NewRepository(mock)
 	msgs, err := repo.ListMessages(context.Background(), "c1", "", 10)
@@ -223,7 +245,9 @@ func TestPgRepository_ListMessages_WithCursor(t *testing.T) {
 	defer done()
 
 	rows := pgxmock.NewRows([]string{"id", "sender_id", "chat_id", "content", "status", "created_at"})
-	exp.ExpectQuery(`FROM messages`).WillReturnRows(rows)
+	exp.ExpectQuery(`FROM messages`).
+		WithArgs("c1", "mid", 10).
+		WillReturnRows(rows)
 
 	repo := NewRepository(mock)
 	_, err := repo.ListMessages(context.Background(), "c1", "mid", 10)
@@ -237,7 +261,9 @@ func TestPgRepository_ListMessages_LimitClamp(t *testing.T) {
 	defer done()
 
 	rows := pgxmock.NewRows([]string{"id", "sender_id", "chat_id", "content", "status", "created_at"})
-	exp.ExpectQuery(`FROM messages`).WillReturnRows(rows)
+	exp.ExpectQuery(`FROM messages`).
+		WithArgs("c1", 50).
+		WillReturnRows(rows)
 
 	repo := NewRepository(mock)
 	_, err := repo.ListMessages(context.Background(), "c1", "", 200)

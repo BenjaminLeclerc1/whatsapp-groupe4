@@ -53,7 +53,9 @@ func TestRepository_FindByUser_Empty(t *testing.T) {
 	defer done()
 
 	rows := pgxmock.NewRows([]string{"id", "name", "type", "participants", "created_at"})
-	exp.ExpectQuery(`SELECT id, name, type, participants, created_at`).WillReturnRows(rows)
+	exp.ExpectQuery(`SELECT id, name, type, participants, created_at`).
+		WithArgs("u1").
+		WillReturnRows(rows)
 
 	repo := NewRepository(mock)
 	chats, err := repo.FindByUser(context.Background(), "u1")
@@ -72,7 +74,9 @@ func TestRepository_UpdateName(t *testing.T) {
 	mock, exp, done := newChatsMock(t)
 	defer done()
 
-	exp.ExpectExec(`UPDATE chats SET name`).WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	exp.ExpectExec(`UPDATE chats SET name`).
+		WithArgs("new", "id1").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 	repo := NewRepository(mock)
 	if err := repo.UpdateName(context.Background(), "id1", "new"); err != nil {
@@ -87,7 +91,9 @@ func TestRepository_Delete(t *testing.T) {
 	mock, exp, done := newChatsMock(t)
 	defer done()
 
-	exp.ExpectExec(`DELETE FROM chats WHERE id`).WillReturnResult(pgxmock.NewResult("DELETE", 1))
+	exp.ExpectExec(`DELETE FROM chats WHERE id`).
+		WithArgs("id1").
+		WillReturnResult(pgxmock.NewResult("DELETE", 1))
 
 	repo := NewRepository(mock)
 	if err := repo.Delete(context.Background(), "id1"); err != nil {

@@ -35,7 +35,9 @@ func TestPgRepository_CreateMessage(t *testing.T) {
 
 	rows := pgxmock.NewRows([]string{"id", "sender_id", "chat_id", "content", "status", "created_at"}).
 		AddRow("m1", "s1", "c1", "hi", "sent", time.Now())
-	exp.ExpectQuery(`INSERT INTO messages`).WillReturnRows(rows)
+	exp.ExpectQuery(`INSERT INTO messages`).
+		WithArgs(pgxmock.AnyArg(), "s1", "c1", "hi").
+		WillReturnRows(rows)
 
 	repo := NewRepository(mock)
 	m, err := repo.CreateMessage(context.Background(), "c1", "s1", "hi")
@@ -54,7 +56,9 @@ func TestPgRepository_GetMessageByID_NotFound(t *testing.T) {
 	mock, exp, done := newMsgMock(t)
 	defer done()
 
-	exp.ExpectQuery(`SELECT id, sender_id::text`).WillReturnError(pgx.ErrNoRows)
+	exp.ExpectQuery(`SELECT id, sender_id::text`).
+		WithArgs("missing").
+		WillReturnError(pgx.ErrNoRows)
 
 	repo := NewRepository(mock)
 	_, err := repo.GetMessageByID(context.Background(), "missing")
@@ -69,6 +73,7 @@ func TestPgRepository_ListMessagesByChat_NoCursor(t *testing.T) {
 
 	rows := pgxmock.NewRows([]string{"id", "sender_id", "chat_id", "content", "status", "created_at"})
 	exp.ExpectQuery(`SELECT id, sender_id::text, chat_id, content, status, created_at FROM messages WHERE chat_id`).
+		WithArgs("c1", 10).
 		WillReturnRows(rows)
 
 	repo := NewRepository(mock)
@@ -90,6 +95,7 @@ func TestPgRepository_ListMessagesByChat_WithCursor(t *testing.T) {
 
 	rows := pgxmock.NewRows([]string{"id", "sender_id", "chat_id", "content", "status", "created_at"})
 	exp.ExpectQuery(`SELECT id, sender_id::text, chat_id, content, status, created_at FROM messages WHERE chat_id`).
+		WithArgs("c1", "cursor-id", 10).
 		WillReturnRows(rows)
 
 	repo := NewRepository(mock)
@@ -108,6 +114,7 @@ func TestPgRepository_ListMessagesByChat_LimitClamp(t *testing.T) {
 
 	rows := pgxmock.NewRows([]string{"id", "sender_id", "chat_id", "content", "status", "created_at"})
 	exp.ExpectQuery(`SELECT id, sender_id::text, chat_id, content, status, created_at FROM messages WHERE chat_id`).
+		WithArgs("c1", 50).
 		WillReturnRows(rows)
 
 	repo := NewRepository(mock)
@@ -124,7 +131,9 @@ func TestPgRepository_DeleteMessage_NoRows(t *testing.T) {
 	mock, exp, done := newMsgMock(t)
 	defer done()
 
-	exp.ExpectExec(`DELETE FROM messages WHERE id`).WillReturnResult(pgxmock.NewResult("DELETE", 0))
+	exp.ExpectExec(`DELETE FROM messages WHERE id`).
+		WithArgs("m1", "s1").
+		WillReturnResult(pgxmock.NewResult("DELETE", 0))
 
 	repo := NewRepository(mock)
 	err := repo.DeleteMessage(context.Background(), "m1", "s1")
@@ -138,7 +147,9 @@ func TestPgRepository_MessageExists(t *testing.T) {
 	defer done()
 
 	rows := pgxmock.NewRows([]string{"exists"}).AddRow(true)
-	exp.ExpectQuery(`SELECT EXISTS`).WillReturnRows(rows)
+	exp.ExpectQuery(`SELECT EXISTS`).
+		WithArgs("m1").
+		WillReturnRows(rows)
 
 	repo := NewRepository(mock)
 	ok, err := repo.MessageExists(context.Background(), "m1")
