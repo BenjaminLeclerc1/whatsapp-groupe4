@@ -8,6 +8,8 @@ import (
 	"github.com/whatsapp-groupe4/internal/middleware"
 )
 
+const errInvalidChannelIDFormat = "invalid channel id format"
+
 type Handler struct {
 	svc Service
 }
@@ -56,7 +58,7 @@ func (h *Handler) GetChannel(c *gin.Context) {
 	channelID := c.Param("id")
 
 	if !middleware.IsValidUUID(channelID) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid channel id format"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidChannelIDFormat})
 		return
 	}
 
@@ -74,7 +76,7 @@ func (h *Handler) UpdateChannel(c *gin.Context) {
 	channelID := c.Param("id")
 
 	if !middleware.IsValidUUID(channelID) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid channel id format"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidChannelIDFormat})
 		return
 	}
 
@@ -98,7 +100,7 @@ func (h *Handler) DeleteChannel(c *gin.Context) {
 	channelID := c.Param("id")
 
 	if !middleware.IsValidUUID(channelID) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid channel id format"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidChannelIDFormat})
 		return
 	}
 
@@ -129,7 +131,7 @@ func (h *Handler) AddMember(c *gin.Context) {
 	channelID := c.Param("id")
 
 	if !middleware.IsValidUUID(channelID) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid channel id format"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidChannelIDFormat})
 		return
 	}
 
@@ -175,7 +177,7 @@ func (h *Handler) ListMembers(c *gin.Context) {
 	channelID := c.Param("id")
 
 	if !middleware.IsValidUUID(channelID) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid channel id format"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidChannelIDFormat})
 		return
 	}
 
@@ -195,7 +197,7 @@ func (h *Handler) ListMessages(c *gin.Context) {
 	channelID := c.Param("id")
 
 	if !middleware.IsValidUUID(channelID) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid channel id format"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidChannelIDFormat})
 		return
 	}
 

@@ -25,6 +25,8 @@ type Repository interface {
 	ListMessages(ctx context.Context, chatID, cursor string, limit int) ([]Message, error)
 }
 
+const errChannelNotFound = "channel not found"
+
 type pgRepository struct {
 	pool *pgxpool.Pool
 }
@@ -60,7 +62,7 @@ func (r *pgRepository) GetChannelByID(ctx context.Context, id string) (Channel, 
 		 FROM chats WHERE id = $1`, id,
 	).Scan(&ch.ID, &ch.Name, &ch.Description, &ch.IsGroup, &ch.OwnerID, &ch.MaxMembers, &ch.CreatedAt)
 	if err == pgx.ErrNoRows {
-		return ch, fmt.Errorf("channel not found")
+		return ch, fmt.Errorf(errChannelNotFound)
 	}
 	return ch, err
 }
@@ -80,7 +82,7 @@ func (r *pgRepository) UpdateChannel(ctx context.Context, id string, req UpdateC
 		req.Name, req.Description, req.MaxMembers, id,
 	).Scan(&ch.ID, &ch.Name, &ch.Description, &ch.IsGroup, &ch.OwnerID, &ch.MaxMembers, &ch.CreatedAt)
 	if err == pgx.ErrNoRows {
-		return ch, fmt.Errorf("channel not found")
+		return ch, fmt.Errorf(errChannelNotFound)
 	}
 	return ch, err
 }
@@ -94,7 +96,7 @@ func (r *pgRepository) DeleteChannel(ctx context.Context, id string) error {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("channel not found")
+		return fmt.Errorf(errChannelNotFound)
 	}
 	return nil
 }

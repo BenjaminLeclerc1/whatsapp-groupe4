@@ -100,7 +100,11 @@ var (
 	generateRefreshTokenFn = generateRefreshToken
 )
 
-const errServerMessage = "Erreur serveur"
+const (
+	errServerMessage            = "Erreur serveur"
+	errTokenGenerationMessage   = "Erreur génération token"
+	errRefreshGenerationMessage = "Erreur génération refresh token"
+)
 
 func main() {
 	logger.Init("auth-service")
@@ -285,13 +289,13 @@ func register(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL tim
 
 		token, err := generateJWTFn(user.ID, user.Email, jwtSecret, accessTokenTTL)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération token"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errTokenGenerationMessage})
 			return
 		}
 
 		refreshToken, refreshHash, err := generateRefreshTokenFn()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération refresh token"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errRefreshGenerationMessage})
 			return
 		}
 
@@ -356,13 +360,13 @@ func login(pool dbPool, jwtSecret string, accessTokenTTL, refreshTokenTTL time.D
 
 		token, err := generateJWTFn(user.ID, user.Email, jwtSecret, accessTokenTTL)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération token"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errTokenGenerationMessage})
 			return
 		}
 
 		refreshToken, refreshHash, err := generateRefreshTokenFn()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Erreur génération refresh token"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errRefreshGenerationMessage})
 			return
 		}
 
@@ -440,7 +444,7 @@ func executeRefresh(
 
 	newRefreshToken, newRefreshHash, err := generateRefreshTokenFn()
 	if err != nil {
-		return "", "", http.StatusInternalServerError, "Erreur génération refresh token", err
+		return "", "", http.StatusInternalServerError, errRefreshGenerationMessage, err
 	}
 
 	if err := rotateRefreshToken(ctx, tx, now, hash, newRefreshHash, userID, refreshTokenTTL); err != nil {
@@ -449,7 +453,7 @@ func executeRefresh(
 
 	accessToken, err := generateJWTFn(userID, email, jwtSecret, accessTokenTTL)
 	if err != nil {
-		return "", "", http.StatusInternalServerError, "Erreur génération token", err
+		return "", "", http.StatusInternalServerError, errTokenGenerationMessage, err
 	}
 	return accessToken, newRefreshToken, http.StatusOK, "", nil
 }
