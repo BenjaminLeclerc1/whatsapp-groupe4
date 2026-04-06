@@ -2,15 +2,16 @@ package main
 
 import (
 	"context"
+	"log"
+	"os"
+	"strings"
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"log"
-	"os"
-	"strings"
-	"time"
 
 	// --- Verify this matches your go.mod module name ---
 	"github.com/whatsapp-groupe4/internal/chats"
@@ -55,23 +56,7 @@ func main() {
     r.RedirectTrailingSlash = false
     r.RedirectFixedPath = false
 
-    api := r.Group("/api/v1/chats")
-    {
-        api.Use(middleware.ExtractUserID())
-
-        // ✅ Handle both so Gin never feels the need to redirect
-        api.GET("", handler.GetMyChats)  // matches /api/v1/chats
-        api.GET("/", handler.GetMyChats) // matches /api/v1/chats/
-        
-        api.POST("", handler.CreateChat)
-        api.POST("/", handler.CreateChat)
-
-
-		// --- NOUVELLES ROUTES ---
-    // Ces routes capturent l'ID après /chats/
-    api.PUT("/:id", handler.UpdateChat)    // Pour modifier (ex: /api/v1/chats/123)
-    api.DELETE("/:id", handler.DeleteChat) // Pour supprimer (ex: /api/v1/chats/123)
-    }
+	r = newChatRouter(handler)
     r.Run(":8088")
 }
 
@@ -94,12 +79,7 @@ func initDB(databaseURL string) (*pgxpool.Pool, error) {
 func runMigrations(databaseURL string) {
 	// Add ?x-migrations-table=migrations_chats to the URL
 	// This prevents conflicts with other services in the same shard
-	migrationURL := databaseURL
-	if !strings.Contains(migrationURL, "?") {
-		migrationURL += "?x-migrations-table=migrations_chats"
-	} else {
-		migrationURL += "&x-migrations-table=migrations_chats"
-	}
+	migrationURL := chatMigrationURL(databaseURL)
 
 	m, err := migrate.New(
 		"file://migrations/chat-service",
@@ -114,4 +94,34 @@ func runMigrations(databaseURL string) {
 	}
 
 	log.Println("Chat Service Migrations applied successfully!")
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func chatMigrationURL(databaseURL string) string {
+	if strings.Contains(databaseURL, "?") {
+		return databaseURL + "&x-migrations-table=migrations_chats"
+	}
+	return databaseURL + "?x-migrations-table=migrations_chats"
+}
+
+func newChatRouter(handler *chats.Handler) *gin.Engine {
+	r := gin.Default()
+	r.RedirectTrailingSlash = false
+	r.RedirectFixedPath = false
+
+	api := r.Group("/api/v1/chats")
+	api.Use(middleware.ExtractUserID())
+	api.GET("", handler.GetMyChats)
+	api.GET("/", handler.GetMyChats)
+	api.POST("", handler.CreateChat)
+	api.POST("/", handler.CreateChat)
+	api.PUT("/:id", handler.UpdateChat)
+	api.DELETE("/:id", handler.DeleteChat)
+	return r
 }
