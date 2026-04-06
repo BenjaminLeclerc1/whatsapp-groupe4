@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -39,16 +40,7 @@ func main() {
 	svc := channels.NewService(repo)
 	handler := channels.NewHandler(svc)
 
-	router := gin.Default()
-
-	// Health check
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "channel-service"})
-	})
-
-	// Register Routes (This uses the 'handler' variable)
-	api := router.Group("/api/v1", middleware.ExtractUserID())
-	handler.RegisterRoutes(api)
+	router := newChannelRouter(handler)
 
 	// 5. Start Server (This uses port, http, time, etc.)
 	srv := &http.Server{
@@ -73,6 +65,16 @@ func main() {
 	log.Println("shutting down gracefully...")
 }
 
+func newChannelRouter(handler *channels.Handler) *gin.Engine {
+	router := gin.Default()
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "channel-service"})
+	})
+	api := router.Group("/api/v1", middleware.ExtractUserID())
+	handler.RegisterRoutes(api)
+	return router
+}
+
 func initDB(databaseURL string) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
@@ -81,10 +83,15 @@ func initDB(databaseURL string) (*pgxpool.Pool, error) {
 	return pgxpool.NewWithConfig(context.Background(), config)
 }
 
+func channelMigrationURL(databaseURL string) string {
+	if !strings.Contains(databaseURL, "?") {
+		return databaseURL + "?x-migrations-table=migrations_channels"
+	}
+	return databaseURL + "&x-migrations-table=migrations_channels"
+}
+
 func runMigrations(databaseURL string) {
-	// We add 'x-migrations-table' to the URL to give this service its own tracker
-	// This prevents it from conflicting with the user-service
-	targetURL := databaseURL + "&x-migrations-table=migrations_channels"
+	targetURL := channelMigrationURL(databaseURL)
 
 	m, err := migrate.New("file://migrations/channel-service", targetURL)
 	if err != nil {

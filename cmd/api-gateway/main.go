@@ -24,6 +24,18 @@ func main() {
 	logger.Init("api-gateway")
 	defer logger.Close()
 
+	jwtSecret := requireEnv("JWT_SECRET")
+	router := newGatewayRouter(jwtSecret)
+
+	port := getEnv("API_GATEWAY_PORT", "8080")
+	log.Printf("Gateway running on port %s", port)
+	if err := router.Run(":" + port); err != nil {
+		log.Fatalf("failed to run gateway: %v", err)
+	}
+}
+
+// newGatewayRouter est appelé par les tests : la couverture Sonar ne compte pas le corps de main().
+func newGatewayRouter(jwtSecret string) *gin.Engine {
 	router := gin.Default()
 	router.RedirectTrailingSlash = false
 	router.RedirectFixedPath = false
@@ -41,7 +53,6 @@ func main() {
 	userServiceURL := getEnv("USER_SERVICE_URL", "http://localhost:8081")
 	chatServiceURL := getEnv("CHAT_SERVICE_URL", "http://localhost:8088")
 	messageServiceURL := getEnv("MESSAGE_SERVICE_URL", "http://localhost:8082")
-	jwtSecret := requireEnv("JWT_SECRET")
 
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -64,11 +75,7 @@ func main() {
 		}
 	}
 
-	port := getEnv("API_GATEWAY_PORT", "8080")
-	log.Printf("Gateway running on port %s", port)
-	if err := router.Run(":" + port); err != nil {
-		log.Fatalf("failed to run gateway: %v", err)
-	}
+	return router
 }
 
 func proxyHandler(targetURL string) gin.HandlerFunc {
