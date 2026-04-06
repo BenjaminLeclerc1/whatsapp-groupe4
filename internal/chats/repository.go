@@ -2,8 +2,17 @@ package chats
 
 import (
 	"context"
-	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// pgxPool est le sous-ensemble de *pgxpool.Pool utilisé ici (mockable en test).
+type pgxPool interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
 
 type Repository interface {
 	Create(ctx context.Context, chat Chat) error
@@ -14,10 +23,10 @@ type Repository interface {
 }
 
 type repository struct {
-	db *pgxpool.Pool
+	db pgxPool
 }
 
-func NewRepository(db *pgxpool.Pool) Repository {
+func NewRepository(db pgxPool) Repository {
 	return &repository{db: db}
 }
 

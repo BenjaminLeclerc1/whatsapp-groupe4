@@ -8,8 +8,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+type pgxPool interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
 
 type Repository interface {
 	CreateMessage(ctx context.Context, chatID, senderID, content string) (Message, error)
@@ -22,10 +28,10 @@ type Repository interface {
 }
 
 type pgRepository struct {
-	pool *pgxpool.Pool
+	pool pgxPool
 }
 
-func NewRepository(pool *pgxpool.Pool) Repository {
+func NewRepository(pool pgxPool) Repository {
 	return &pgRepository{pool: pool}
 }
 

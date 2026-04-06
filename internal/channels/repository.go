@@ -6,8 +6,14 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+type pgxPool interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
 
 type Repository interface {
 	CreateChannel(ctx context.Context, ch Channel) (Channel, error)
@@ -28,10 +34,10 @@ type Repository interface {
 const errChannelNotFound = "channel not found"
 
 type pgRepository struct {
-	pool *pgxpool.Pool
+	pool pgxPool
 }
 
-func NewRepository(pool *pgxpool.Pool) Repository {
+func NewRepository(pool pgxPool) Repository {
 	return &pgRepository{pool: pool}
 }
 
