@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import "../../components/styles/login.css";
 import logo from "../../components/assets/logo.png";
@@ -44,7 +43,7 @@ function Login() {
       console.log("Login successful!");
       // 🚀 Using window.location.href is safer than navigate("/")
       // when you need App.js to refresh and detect the new token
-      window.location.href = "/chat";
+      window.location.href = "/chats";
     } catch (err) {
       console.error("Login Error:", err);
       // This will now only show if the server actually rejects the request (401)

@@ -42,9 +42,8 @@ const authHeaders = useMemo(() => {
       "X-User-ID": userId || "",
     },
   };
-  // On ajoute 'chats' ou une autre variable qui change après login 
-  // pour forcer React à rafraîchir les headers
-}, [chats.length]);
+  // Login / register font un rechargement complet de la page : localStorage est relu au montage.
+}, []);
   // --- USER ACTIONS ---
 
   const fetchAllUsers = useCallback(async () => {
@@ -250,7 +249,7 @@ const createChat = async (newChatData) => {
     if (!chatId) return [];
     setLoading(true);
     try {
-      const res = await axios.get(`http://localhost:8082/api/v1/messages/${chatId}`, authHeaders);
+      const res = await axios.get(`${apiUrl}/messages/chat/${chatId}`, authHeaders);
       const data = res.data.messages || res.data.data || res.data;
       const historyMessages = Array.isArray(data) ? data : [];
       setMessages(historyMessages);
@@ -261,7 +260,7 @@ const createChat = async (newChatData) => {
     } finally {
       setLoading(false);
     }
-  }, [authHeaders]);
+  }, [authHeaders, apiUrl]);
 
   // --- NOTIFICATIONS ---
 

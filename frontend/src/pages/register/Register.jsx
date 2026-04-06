@@ -49,17 +49,16 @@ function Register() {
       // Axios call to your Go backend
       const response = await axios.post(`${apiUrl}/users/register`, formData);
 
-      // 2. Success: Save session data
-      localStorage.setItem("token", response.data.token);
+      // user-service renvoie l'utilisateur créé (sans JWT) : connexion via /login ensuite
+      const id = response.data.id;
+      if (id) {
+        localStorage.setItem("user_id", id);
+      }
+      localStorage.setItem("user", JSON.stringify(response.data));
 
-      // Handle cases where the backend might send 'user_id' instead of 'user' object
-      const userData = response.data.user || { id: response.data.user_id };
-      localStorage.setItem("user", JSON.stringify(userData));
+      console.log("Registration successful, redirecting to login...");
 
-      console.log("Registration successful, redirecting...");
-
-      // 3. Redirect to App
-      window.location.href = "/chat";
+      window.location.href = "/login";
       // navigate("/chat");
     } catch (err) {
       setError(

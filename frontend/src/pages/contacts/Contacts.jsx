@@ -9,9 +9,7 @@ const Contacts = () => {
   const { users, loading, createChat, getUserById } = useApp(); // Ajout de getUserById
   const [searchTerm, setSearchTerm] = useState("");
   
-  // Nouveaux états pour les détails
   const [selectedUser, setSelectedUser] = useState(null);
-  const [isDetailsLoading, setIsDetailsLoading] = useState(false);
   const navigate = useNavigate();
 
   // const handleStartChat = async (userId) => {
@@ -32,7 +30,7 @@ const handleStartChat = async (userId) => {
         setSelectedUser(null);
         // 3. Redirect to your chat route
         // Replace "/chat" or "/" with your actual chat page path
-        navigate("/chat"); 
+        navigate("/chats"); 
       }
     } catch (err) {
       console.error(err);
@@ -42,12 +40,10 @@ const handleStartChat = async (userId) => {
 
   // Nouvelle fonction pour voir les détails
   const handleSeeMore = async (userId) => {
-    setIsDetailsLoading(true);
     const data = await getUserById(userId);
     if (data) {
       setSelectedUser(data);
     }
-    setIsDetailsLoading(false);
   };
 
   const filteredUsers = users.filter(user => 
