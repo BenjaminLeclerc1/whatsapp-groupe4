@@ -186,47 +186,14 @@ import (
 	"github.com/whatsapp-groupe4/internal/logger"
 	"github.com/whatsapp-groupe4/internal/messages"
 	"github.com/whatsapp-groupe4/internal/middleware"
-
-	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
 func main() {
-	// 1. Initialize Logger and Config
 	logger.Init("message-service")
 	defer logger.Close()
-	port := getEnv("PORT", "8082")
 
+	port := getEnv("PORT", "8082")
 	databaseURL := requireEnv("DATABASE_URL")
-
-	// 2. Initialize Database (Pass the URL into initDB now)
-	pool, err := initDB(databaseURL)
-	if err != nil {
-		log.Fatalf("database connection failed: %v", err)
-	}
-	defer pool.Close()
-
-	// NEW: Run the migrations (Now databaseURL is defined!)
-	runMigrations(databaseURL)
-	// 3. Setup Router & Middleware
-	router := gin.Default()
-
-)
-
-func main() {
-
-	// -----------------------------
-	// Logger
-	// -----------------------------
-	logger.Init("message-service")
-	defer logger.Close()
-
-	port := getEnv("PORT", "8082")
-	databaseURL := getEnv(
-		"DATABASE_URL",
-		"postgres://whatsapp:whatsapp_secret@localhost:5432/whatsapp_db?sslmode=disable",
-	)
 
 	// -----------------------------
 	// Database
@@ -400,21 +367,4 @@ func requireEnv(key string) string {
 		logger.Fatal("%s environment variable is required", key)
 	}
 	return v
-}
-
-func runMigrations(databaseURL string) {
-	// We point to the specific subfolder for this service!
-	m, err := migrate.New(
-		"file://migrations/message-service",
-		databaseURL,
-	)
-	if err != nil {
-		log.Fatalf("Could not create migrate instance: %v", err)
-	}
-
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		log.Fatalf("Could not run up migrations: %v", err)
-	}
-
-	log.Println("Migrations applied successfully!")
 }
