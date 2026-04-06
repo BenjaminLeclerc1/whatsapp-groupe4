@@ -636,16 +636,16 @@ func TestLogin_UserNotFound(t *testing.T) {
 }
 
 func TestLogin_WrongPassword(t *testing.T) {
-	realHash, _ := bcrypt.GenerateFromPassword([]byte("correct-password"), bcrypt.MinCost)
+	realHash, _ := bcrypt.GenerateFromPassword([]byte(testPassword), bcrypt.MinCost)
 	pool := &mockPool{
 		execErrors: []error{nil},
 		queryRows: []*mockRow{{vals: []any{
 			userID1, "alice", aliceTestEmail, string(realHash), "active", time.Now(),
 		}}},
 	}
-	r := setupRouterWithPool(pool, "secret")
+	r := setupRouterWithPool(pool, testSecret)
 	w := postJSON(r, authLoginPath, map[string]string{
-		"email": aliceTestEmail, "password": "wrong-password",
+		"email": aliceTestEmail, "password": testPasswordAlt,
 	})
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401 for wrong password, got %d", w.Code)
