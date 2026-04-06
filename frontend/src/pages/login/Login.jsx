@@ -35,7 +35,7 @@ function Login() {
       // To response.data.user_id (which matches your Postman output)
       // Save to localStorage
       localStorage.setItem("token", response.data.token);
-      localStorage.setItem("user_id", response.data.user_id);
+      localStorage.setItem("user_id", response.data.user?.id || response.data.user_id || "");
       console.log("Login successful!");
       // 🚀 Using window.location.href is safer than navigate("/")
       // when you need App.js to refresh and detect the new token

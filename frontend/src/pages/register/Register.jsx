@@ -49,16 +49,16 @@ function Register() {
         formData,
       );
 
-      // user-service renvoie l'utilisateur créé (sans JWT) : connexion via /login ensuite
-      const id = response.data.id;
-      if (id) {
-        localStorage.setItem("user_id", id);
-      }
-      localStorage.setItem("user", JSON.stringify(response.data));
+      // auth-service renvoie { user: { id, ... }, token, refresh_token }
+      const token = response.data.token;
+      const userId = response.data.user?.id;
+      if (token) localStorage.setItem("token", token);
+      if (userId) localStorage.setItem("user_id", userId);
+      localStorage.setItem("user", JSON.stringify(response.data.user || response.data));
 
-      console.log("Registration successful, redirecting to login...");
+      console.log("Registration successful!");
 
-      window.location.href = "/login";
+      window.location.href = token ? "/chats" : "/login";
       // navigate("/chat");
     } catch (err) {
       setError(

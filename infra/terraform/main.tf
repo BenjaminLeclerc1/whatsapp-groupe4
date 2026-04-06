@@ -71,6 +71,7 @@ locals {
   pg_fqdn       = azurerm_postgresql_flexible_server.pg.fqdn
   db_url_shard0 = "postgres://${var.postgres_admin_username}:${var.postgres_admin_password}@${local.pg_fqdn}:5432/${azurerm_postgresql_flexible_server_database.shard0.name}?sslmode=require"
   db_url_shard1 = "postgres://${var.postgres_admin_username}:${var.postgres_admin_password}@${local.pg_fqdn}:5432/${azurerm_postgresql_flexible_server_database.shard1.name}?sslmode=require"
+  shard_urls    = "${local.db_url_shard0},${local.db_url_shard1}"
 }
 
 resource "azurerm_container_app" "auth" {
@@ -253,6 +254,278 @@ resource "azurerm_container_app" "message" {
   }
 }
 
+resource "azurerm_container_app" "user" {
+  name                         = "user-service"
+  resource_group_name          = azurerm_resource_group.rg.name
+  container_app_environment_id = azurerm_container_app_environment.cae.id
+  revision_mode                = "Single"
+
+  secret {
+    name  = "acr-password"
+    value = azurerm_container_registry.acr.admin_password
+  }
+  secret {
+    name  = "jwt-secret"
+    value = var.jwt_secret
+  }
+  secret {
+    name  = "shard-urls"
+    value = local.shard_urls
+  }
+
+  registry {
+    server               = azurerm_container_registry.acr.login_server
+    username             = azurerm_container_registry.acr.admin_username
+    password_secret_name = "acr-password"
+  }
+
+  ingress {
+    external_enabled = true
+    target_port      = 8081
+    traffic_weight {
+      percentage      = 100
+      latest_revision = true
+    }
+  }
+
+  template {
+    min_replicas = 1
+    max_replicas = 10
+
+    container {
+      name   = "user-service"
+      image  = var.images.user_service
+      cpu    = 0.5
+      memory = "1Gi"
+
+      env {
+        name  = "PORT"
+        value = "8081"
+      }
+      env {
+        name        = "JWT_SECRET"
+        secret_name = "jwt-secret"
+      }
+      env {
+        name        = "SHARD_URLS"
+        secret_name = "shard-urls"
+      }
+      env {
+        name  = "GIN_MODE"
+        value = "release"
+      }
+    }
+  }
+}
+
+resource "azurerm_container_app" "notification" {
+  name                         = "notification-service"
+  resource_group_name          = azurerm_resource_group.rg.name
+  container_app_environment_id = azurerm_container_app_environment.cae.id
+  revision_mode                = "Single"
+
+  secret {
+    name  = "acr-password"
+    value = azurerm_container_registry.acr.admin_password
+  }
+
+  registry {
+    server               = azurerm_container_registry.acr.login_server
+    username             = azurerm_container_registry.acr.admin_username
+    password_secret_name = "acr-password"
+  }
+
+  ingress {
+    external_enabled = true
+    target_port      = 8085
+    traffic_weight {
+      percentage      = 100
+      latest_revision = true
+    }
+  }
+
+  template {
+    min_replicas = 1
+    max_replicas = 5
+
+    container {
+      name   = "notification-service"
+      image  = var.images.notification_service
+      cpu    = 0.25
+      memory = "0.5Gi"
+
+      env {
+        name  = "PORT"
+        value = "8085"
+      }
+      env {
+        name  = "GIN_MODE"
+        value = "release"
+      }
+    }
+  }
+}
+
+resource "azurerm_container_app" "presence" {
+  name                         = "presence-service"
+  resource_group_name          = azurerm_resource_group.rg.name
+  container_app_environment_id = azurerm_container_app_environment.cae.id
+  revision_mode                = "Single"
+
+  secret {
+    name  = "acr-password"
+    value = azurerm_container_registry.acr.admin_password
+  }
+
+  registry {
+    server               = azurerm_container_registry.acr.login_server
+    username             = azurerm_container_registry.acr.admin_username
+    password_secret_name = "acr-password"
+  }
+
+  ingress {
+    external_enabled = true
+    target_port      = 8086
+    traffic_weight {
+      percentage      = 100
+      latest_revision = true
+    }
+  }
+
+  template {
+    min_replicas = 1
+    max_replicas = 5
+
+    container {
+      name   = "presence-service"
+      image  = var.images.presence_service
+      cpu    = 0.25
+      memory = "0.5Gi"
+
+      env {
+        name  = "PORT"
+        value = "8086"
+      }
+      env {
+        name  = "GIN_MODE"
+        value = "release"
+      }
+    }
+  }
+}
+
+resource "azurerm_container_app" "search" {
+  name                         = "search-service"
+  resource_group_name          = azurerm_resource_group.rg.name
+  container_app_environment_id = azurerm_container_app_environment.cae.id
+  revision_mode                = "Single"
+
+  secret {
+    name  = "acr-password"
+    value = azurerm_container_registry.acr.admin_password
+  }
+  secret {
+    name  = "db-url"
+    value = local.db_url_shard1
+  }
+
+  registry {
+    server               = azurerm_container_registry.acr.login_server
+    username             = azurerm_container_registry.acr.admin_username
+    password_secret_name = "acr-password"
+  }
+
+  ingress {
+    external_enabled = true
+    target_port      = 8087
+    traffic_weight {
+      percentage      = 100
+      latest_revision = true
+    }
+  }
+
+  template {
+    min_replicas = 1
+    max_replicas = 10
+
+    container {
+      name   = "search-service"
+      image  = var.images.search_service
+      cpu    = 0.5
+      memory = "1Gi"
+
+      env {
+        name  = "PORT"
+        value = "8087"
+      }
+      env {
+        name        = "DATABASE_URL"
+        secret_name = "db-url"
+      }
+      env {
+        name  = "GIN_MODE"
+        value = "release"
+      }
+    }
+  }
+}
+
+resource "azurerm_container_app" "channel" {
+  name                         = "channel-service"
+  resource_group_name          = azurerm_resource_group.rg.name
+  container_app_environment_id = azurerm_container_app_environment.cae.id
+  revision_mode                = "Single"
+
+  secret {
+    name  = "acr-password"
+    value = azurerm_container_registry.acr.admin_password
+  }
+  secret {
+    name  = "db-url"
+    value = local.db_url_shard0
+  }
+
+  registry {
+    server               = azurerm_container_registry.acr.login_server
+    username             = azurerm_container_registry.acr.admin_username
+    password_secret_name = "acr-password"
+  }
+
+  ingress {
+    external_enabled = true
+    target_port      = 8088
+    traffic_weight {
+      percentage      = 100
+      latest_revision = true
+    }
+  }
+
+  template {
+    min_replicas = 1
+    max_replicas = 10
+
+    container {
+      name   = "channel-service"
+      image  = var.images.channel_service
+      cpu    = 0.5
+      memory = "1Gi"
+
+      env {
+        name  = "PORT"
+        value = "8088"
+      }
+      env {
+        name        = "DATABASE_URL"
+        secret_name = "db-url"
+      }
+      env {
+        name  = "GIN_MODE"
+        value = "release"
+      }
+    }
+  }
+}
+
 resource "azurerm_container_app" "gateway" {
   name                         = "api-gateway"
   resource_group_name          = azurerm_resource_group.rg.name
@@ -316,7 +589,23 @@ resource "azurerm_container_app" "gateway" {
       }
       env {
         name  = "USER_SERVICE_URL"
-        value = "https://${azurerm_container_app.auth.ingress[0].fqdn}"
+        value = "https://${azurerm_container_app.user.ingress[0].fqdn}"
+      }
+      env {
+        name  = "NOTIFICATION_SERVICE_URL"
+        value = "https://${azurerm_container_app.notification.ingress[0].fqdn}"
+      }
+      env {
+        name  = "PRESENCE_SERVICE_URL"
+        value = "https://${azurerm_container_app.presence.ingress[0].fqdn}"
+      }
+      env {
+        name  = "SEARCH_SERVICE_URL"
+        value = "https://${azurerm_container_app.search.ingress[0].fqdn}"
+      }
+      env {
+        name  = "CHANNEL_SERVICE_URL"
+        value = "https://${azurerm_container_app.channel.ingress[0].fqdn}"
       }
     }
   }

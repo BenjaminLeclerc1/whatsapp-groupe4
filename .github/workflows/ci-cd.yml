@@ -146,12 +146,17 @@ jobs:
         run: |
           cat > ci.auto.tfvars <<'EOF'
           postgres_admin_password = "ci-dummy-not-used-anywhere"
-          jwt_secret                = "ci-dummy-not-used-anywhere"
+          jwt_secret              = "ci-dummy-not-used-anywhere"
           images = {
-            auth_service    = "example.azurecr.io/auth-service:ci"
-            chat_service    = "example.azurecr.io/chat-service:ci"
-            message_service = "example.azurecr.io/message-service:ci"
-            api_gateway     = "example.azurecr.io/api-gateway:ci"
+            auth_service         = "example.azurecr.io/auth-service:ci"
+            chat_service         = "example.azurecr.io/chat-service:ci"
+            message_service      = "example.azurecr.io/message-service:ci"
+            api_gateway          = "example.azurecr.io/api-gateway:ci"
+            user_service         = "example.azurecr.io/user-service:ci"
+            notification_service = "example.azurecr.io/notification-service:ci"
+            presence_service     = "example.azurecr.io/presence-service:ci"
+            search_service       = "example.azurecr.io/search-service:ci"
+            channel_service      = "example.azurecr.io/channel-service:ci"
           }
           EOF
 

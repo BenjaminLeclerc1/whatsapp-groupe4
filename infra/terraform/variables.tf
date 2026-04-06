@@ -54,10 +54,15 @@ variable "jwt_secret" {
 
 variable "images" {
   type = object({
-    auth_service    = string
-    chat_service    = string
-    message_service = string
-    api_gateway     = string
+    auth_service         = string
+    chat_service         = string
+    message_service      = string
+    api_gateway          = string
+    user_service         = string
+    notification_service = string
+    presence_service     = string
+    search_service       = string
+    channel_service      = string
   })
   description = "Container image references (including tag) hosted in ACR."
 }
