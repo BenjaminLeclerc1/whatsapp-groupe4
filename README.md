@@ -157,6 +157,79 @@ docker exec -it whatsapp-shard-0 psql -U whatsapp -d whatsapp_shard_0
 docker exec -it whatsapp-redis redis-cli
 ```
 
+### Presence Service
+
+```bash
+# Marquer un utilisateur comme en ligne
+curl -X POST http://localhost:8083/api/v1/presence/online \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "user-123"}'
+
+# Marquer un utilisateur comme hors ligne
+curl -X POST http://localhost:8083/api/v1/presence/offline \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "user-123"}'
+
+# Indiquer qu'un utilisateur est en train de taper
+curl -X POST http://localhost:8083/api/v1/presence/typing \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "user-123", "chat_id": "chat-456", "typing": true}'
+
+# Obtenir la présence d'un utilisateur
+curl http://localhost:8083/api/v1/presence/user-123
+
+# Obtenir la présence de plusieurs utilisateurs
+curl -X GET http://localhost:8083/api/v1/presence/bulk \
+  -H "Content-Type: application/json" \
+  -d '{"user_ids": ["user-123", "user-456", "user-789"]}'
+
+# Mettre à jour la présence (générique)
+curl -X POST http://localhost:8083/api/v1/presence/update \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "user-123", "status": "online"}'
+```
+
+**Fonctionnalités du Presence Service :**
+- 🟢 Statuts disponibles : `online`, `offline`, `typing`
+- ⏱️ Timeout automatique après 5 minutes d'inactivité (passage en offline)
+- ⌨️ Timeout du statut "typing" après 10 secondes
+- 📊 Récupération de la présence en masse (bulk)
+- 🔄 Worker background pour gérer les timeouts automatiquement
+
+### Search Service
+
+```bash
+# Indexer un message pour la recherche
+curl -X POST http://localhost:8084/api/v1/search/index \
+  -H "Content-Type: application/json" \
+  -d '{"id": "msg-123", "sender_id": "user-456", "content": "Bonjour, comment vas-tu?", "chat_id": "chat-789"}'
+
+# Rechercher des messages (tous les chats)
+curl "http://localhost:8084/api/v1/search/messages?q=bonjour&limit=10"
+
+# Rechercher dans un chat spécifique
+curl "http://localhost:8084/api/v1/search/messages/chat/chat-789?q=bonjour"
+
+# Rechercher les messages d'un utilisateur
+curl "http://localhost:8084/api/v1/search/messages/user/user-456?q=bonjour"
+
+# Supprimer un message de l'index
+curl -X DELETE http://localhost:8084/api/v1/search/index/msg-123
+
+# Obtenir les statistiques de l'index
+curl http://localhost:8084/api/v1/search/stats
+```
+
+**Fonctionnalités du Search Service :**
+- 🔍 Recherche full-text dans les messages
+- 📝 Index inversé pour des recherches rapides
+- 🎯 Filtrage par chat ou par utilisateur
+- 💯 Score de pertinence pour chaque résultat
+- ✨ Highlight automatique des extraits pertinents
+- 🔤 Normalisation et tokenization intelligente
+- 🚫 Filtrage des mots vides (stop words) en français et anglais
+- 📊 Statistiques sur l'index de recherche
+
 ## Structure du projet
 
 ```

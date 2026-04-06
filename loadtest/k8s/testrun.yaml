@@ -1,0 +1,34 @@
+# Nécessite le Grafana k6 Operator installé sur le cluster (CRD k6.io).
+# La charge est répartie : chaque runner exécute une fraction des VUs du script.
+#
+# Avant apply : remplacer BASE_URL par l’URL HTTPS de votre api-gateway (sans slash final).
+#
+# Échelle (script benchmark_10k_health.js) : VUS_1, VUS_2, VUS_3, VUS_MAX, RAMP_1..3, HOLD, START_VUS.
+# Ex. 100k VUs + rampes longues : voir testrun-100k.yaml (kubectl apply -f, pas dans kustomization).
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: whatsapp-gateway-health
+  namespace: k6-loadtest
+spec:
+  parallelism: 4
+  # true = 1 pod par nœud (anti-affinité). Sur kind à 1 nœud, les runners restent Pending → false en local.
+  # Sur AKS multi-nœuds, repasser à true pour répartir la charge sur les nœuds.
+  separate: false
+  cleanup: post
+  script:
+    configMap:
+      name: whatsapp-k6-health-script
+      file: benchmark_10k_health.js
+  runner:
+    env:
+      - name: BASE_URL
+        value: "https://api-gateway.ambitiousmoss-42a72a89.francecentral.azurecontainerapps.io"
+    resources:
+      # k6 consomme beaucoup de RAM par VU ; ~2500 VUs/runner (10k / parallelism 4) dépassait 1Gi → OOMKilled.
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: "2"
+        memory: 3Gi

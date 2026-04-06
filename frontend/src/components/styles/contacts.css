@@ -1,0 +1,312 @@
+/* =========================================
+   1. GLOBAL CONTAINER & LAYOUT
+   ========================================= */
+.whatsapp-app {
+  min-height: 100vh;
+  display: flex;
+  padding: 20px;
+  background-color: #111b21; /* Dark background like WhatsApp Web */
+}
+
+.contacts-container {
+  width: 100%;
+  max-width: 1000px;
+  height: 85vh;
+  background-color: #fff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: row; /* Horizontal layout for Laptop/Tablet */
+  overflow: hidden;
+  border-radius: 8px;
+  margin: auto;
+  position: relative;
+}
+
+.contacts-sidebar {
+  flex: 1.5;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-right: 1px solid #e9edef;
+  min-width: 350px;
+}
+
+/* =========================================
+   2. HEADER & SEARCH
+   ========================================= */
+.sidebar-header {
+  padding: 15px 20px;
+  background: #f0f2f5;
+  border-bottom: 1px solid #e9edef;
+}
+
+.header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-title-row h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #111b21;
+  margin: 0;
+}
+
+.search-container {
+  padding: 8px 15px;
+  background: #fff;
+  border-bottom: 1px solid #f0f2f5;
+}
+
+.search-input-wrapper {
+  background: #f0f2f5;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+}
+
+.search-input-wrapper input {
+  width: 100%;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 14px;
+}
+
+/* =========================================
+   3. CONTACT LIST
+   ========================================= */
+.chat-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.contact-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f2f5;
+  transition: background 0.2s;
+  cursor: pointer;
+}
+
+.contact-item:hover {
+  background-color: #f5f6f6;
+}
+
+.card-avatar img {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-right: 15px;
+  flex-shrink: 0;
+}
+
+.card-info {
+  flex: 1;
+  min-width: 0; /* Prevents overflow of long IDs */
+}
+
+.chat-name {
+  font-weight: 500;
+  font-size: 16px;
+  color: #111b21;
+  display: block;
+}
+
+.user-uuid {
+  display: inline-block;
+  font-family: monospace;
+  font-size: 10px;
+  color: #00a884;
+  background: #e7f7f4;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-top: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.see-more-btn {
+  background: #f0f2f5;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  color: #00a884;
+  cursor: pointer;
+  font-weight: 600;
+  transition: 0.3s;
+}
+
+.see-more-btn:hover {
+  background: #00a884;
+  color: white;
+}
+
+/* =========================================
+   4. USER DETAILS PANEL (RIGHT)
+   ========================================= */
+.user-details-panel {
+  flex: 1;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  animation: slideIn 0.3s ease-out;
+  z-index: 10;
+}
+
+.details-header {
+  background: #00a884;
+  color: white;
+  padding: 15px 20px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.close-btn {
+  background: rgba(0,0,0,0.1);
+  border: none;
+  color: white;
+  font-size: 18px;
+  cursor: pointer;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.details-content {
+  padding: 25px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.details-avatar img {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 4px solid #f0f2f5;
+  background: #f8f9fa;
+}
+
+.details-info-group {
+  width: 100%;
+  text-align: left;
+}
+
+.details-info-group label {
+  font-size: 11px;
+  color: #00a884;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.details-info-group p {
+  font-size: 16px;
+  color: #3b4a54;
+  margin: 8px 0;
+  word-break: break-all;
+}
+
+.uuid-text {
+  font-family: monospace;
+  background: #f8f9fa;
+  padding: 10px;
+  border-radius: 5px;
+  border: 1px solid #eee;
+}
+
+.action-btn {
+  background: #00a884;
+  color: white;
+  border: none;
+  padding: 15px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  transition: background 0.2s;
+  margin-top: 10px;
+}
+
+.action-btn:hover { background: #008f6f; }
+
+/* =========================================
+   5. RESPONSIVE DESIGN
+   ========================================= */
+
+/* --- TABLET (Up to 900px) --- */
+@media (max-width: 900px) {
+  .contacts-container {
+    max-width: 95%;
+    height: 90vh;
+  }
+}
+
+/* --- MOBILE (Up to 768px) --- */
+@media (max-width: 768px) {
+  .whatsapp-app { padding: 0; }
+  .contacts-container { 
+    height: 100vh; 
+    border-radius: 0;
+    max-width: 100%;
+  }
+
+  /* When details are open, overlay them on full screen */
+  .user-details-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .contacts-sidebar {
+    min-width: 100%;
+  }
+
+  .details-avatar img {
+    width: 100px;
+    height: 100px;
+  }
+}
+
+/* =========================================
+   6. UTILS & ANIMATIONS
+   ========================================= */
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.loader-container {
+  display: flex;
+  justify-content: center;
+  padding: 50px;
+}
+
+.loader {
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #00a884;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
