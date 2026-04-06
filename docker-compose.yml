@@ -1,3 +1,5 @@
+# Secrets : définir POSTGRES_USER, POSTGRES_PASSWORD, JWT_SECRET dans un fichier .env (voir .env.example).
+
 services:
   # --- DATABASE SHARDS ---
   postgres_shard_0:
@@ -6,15 +8,15 @@ services:
     ports:
       - "5433:5432"
     environment:
-      POSTGRES_USER: whatsapp
-      POSTGRES_PASSWORD: whatsapp_secret
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env - see .env.example}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env - see .env.example}
       POSTGRES_DB: whatsapp_shard_0
     volumes:
       - postgres_data_0:/var/lib/postgresql/data
     networks:
       - whatsapp-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U whatsapp -d whatsapp_shard_0"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d whatsapp_shard_0"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -25,15 +27,15 @@ services:
     ports:
       - "5434:5432"
     environment:
-      POSTGRES_USER: whatsapp
-      POSTGRES_PASSWORD: whatsapp_secret
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env - see .env.example}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env - see .env.example}
       POSTGRES_DB: whatsapp_shard_1
     volumes:
       - postgres_data_1:/var/lib/postgresql/data
     networks:
       - whatsapp-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U whatsapp -d whatsapp_shard_1"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d whatsapp_shard_1"]
       interval: 5s
       timeout: 5s
       retries: 5

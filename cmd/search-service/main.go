@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Message represents an indexed message
@@ -43,7 +43,7 @@ var (
 func main() {
 	port := getEnv("PORT", "8084")
 	// Search maps to Shard 1 (where messages live)
-	databaseURL := getEnv("DATABASE_URL", "postgres://whatsapp:whatsapp_secret@postgres_shard_1:5432/whatsapp_shard_1?sslmode=disable")
+	databaseURL := requireEnv("DATABASE_URL")
 
 	// 1. Initialize DB Pool
 	pool, err := initDB(databaseURL)
@@ -198,7 +198,7 @@ func getSearchStats(c *gin.Context) {
 	defer mu.RUnlock()
 	c.JSON(http.StatusOK, gin.H{
 		"indexed_messages": len(messages),
-		"unique_words":    len(invertedIndex),
+		"unique_words":     len(invertedIndex),
 	})
 }
 
@@ -252,7 +252,9 @@ func createHighlight(content string, queryWords []string) string {
 
 func contains(slice []string, item string) bool {
 	for _, s := range slice {
-		if s == item { return true }
+		if s == item {
+			return true
+		}
 	}
 	return false
 }
@@ -260,12 +262,24 @@ func contains(slice []string, item string) bool {
 func removeString(slice []string, item string) []string {
 	var result []string
 	for _, s := range slice {
-		if s != item { result = append(result, s) }
+		if s != item {
+			result = append(result, s)
+		}
 	}
 	return result
 }
 
 func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" { return value }
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
 	return defaultValue
+}
+
+func requireEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		log.Fatalf("%s environment variable is required", key)
+	}
+	return v
 }

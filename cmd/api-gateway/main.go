@@ -321,23 +321,14 @@ func getEnv(key, defaultValue string) string {
 // 	}
 // }
 
-// func authMiddleware(jwtSecret string) gin.HandlerFunc {
-// 	return func(c *gin.Context) {
-// 		authHeader := c.GetHeader("Authorization")
-// 		log.Printf("GATEWAY RECEIVED HEADER: %s", authHeader)
-// 		if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-// 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token manquant"})
-// 			c.Abort()
-// 			return
-// 		}
-
-// 		tokenStr := authHeader[7:]
-// 		token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(t *jwt.Token) (interface{}, error) {
-// 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-// 				return nil, errors.New("unexpected signing method")
-// 			}
-// 			return []byte(jwtSecret), nil
-// 		})
+		tokenStr := authHeader[7:]
+		token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(t *jwt.Token) (interface{}, error) {
+			return []byte(jwtSecret), nil
+		})
+		if err != nil || !token.Valid {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			return
+		}
 
 // 		if err != nil || !token.Valid {
 // 			msg := "Token invalide"
@@ -349,12 +340,17 @@ func getEnv(key, defaultValue string) string {
 // 			return
 // 		}
 
-// 		if claims, ok := token.Claims.(*Claims); ok {
-// 			c.Set("user_id", claims.UserID)
-// 			c.Set("email", claims.Email)
-// 			c.Next()
-// 		} else {
-// 			c.AbortWithStatus(http.StatusUnauthorized)
-// 		}
-// 	}
-// }
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func requireEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		log.Fatalf("%s environment variable is required", key)
+	}
+	return v
+}

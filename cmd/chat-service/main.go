@@ -2,15 +2,15 @@ package main
 
 import (
 	"context"
-	"log"
-	"os"
-	"time"
-	"strings"
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"log"
+	"os"
+	"strings"
+	"time"
 
 	// --- Verify this matches your go.mod module name ---
 	"github.com/whatsapp-groupe4/internal/chats"
@@ -21,11 +21,11 @@ func main() {
 	// 1. Init DB & Migrations
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://whatsapp:whatsapp_secret@localhost:5432/chat_db?sslmode=disable"
+		log.Fatal("DATABASE_URL environment variable is required")
 	}
 
 	runMigrations(dbURL)
-	
+
 	pool, err := initDB(dbURL)
 	if err != nil {
 		log.Fatalf("Could not connect to database: %v", err)
@@ -39,7 +39,7 @@ func main() {
 
 	// 3. Routes
 	// r := gin.Default()
-	
+
 	// // FIX: Changed middleware.Auth() to middleware.ExtractUserID()
 	// // to match your internal/middleware/auth.go file
 	// api := r.Group("/api/v1/chats", middleware.ExtractUserID())
@@ -92,26 +92,26 @@ func initDB(databaseURL string) (*pgxpool.Pool, error) {
 }
 
 func runMigrations(databaseURL string) {
-    // Add ?x-migrations-table=migrations_chats to the URL
-    // This prevents conflicts with other services in the same shard
-    migrationURL := databaseURL
-    if !strings.Contains(migrationURL, "?") {
-        migrationURL += "?x-migrations-table=migrations_chats"
-    } else {
-        migrationURL += "&x-migrations-table=migrations_chats"
-    }
+	// Add ?x-migrations-table=migrations_chats to the URL
+	// This prevents conflicts with other services in the same shard
+	migrationURL := databaseURL
+	if !strings.Contains(migrationURL, "?") {
+		migrationURL += "?x-migrations-table=migrations_chats"
+	} else {
+		migrationURL += "&x-migrations-table=migrations_chats"
+	}
 
-    m, err := migrate.New(
-        "file://migrations/chat-service", 
-        migrationURL,
-    )
-    if err != nil {
-        log.Fatalf("Could not create migrate instance: %v", err)
-    }
+	m, err := migrate.New(
+		"file://migrations/chat-service",
+		migrationURL,
+	)
+	if err != nil {
+		log.Fatalf("Could not create migrate instance: %v", err)
+	}
 
-    if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-        log.Fatalf("Could not run up migrations: %v", err)
-    }
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		log.Fatalf("Could not run up migrations: %v", err)
+	}
 
-    log.Println("Chat Service Migrations applied successfully!")
+	log.Println("Chat Service Migrations applied successfully!")
 }

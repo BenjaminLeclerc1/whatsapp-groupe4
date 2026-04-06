@@ -22,7 +22,7 @@ import (
 func main() {
 	// 1. Setup Config
 	port := getEnv("PORT", "8085")
-	databaseURL := getEnv("DATABASE_URL", "postgres://whatsapp:whatsapp_secret@postgres_shard_0:5432/whatsapp_shard_0?sslmode=disable")
+	databaseURL := requireEnv("DATABASE_URL")
 
 	// 2. Initialize Database
 	pool, err := initDB(databaseURL)
@@ -82,19 +82,19 @@ func initDB(databaseURL string) (*pgxpool.Pool, error) {
 }
 
 func runMigrations(databaseURL string) {
-    // We add 'x-migrations-table' to the URL to give this service its own tracker
-    // This prevents it from conflicting with the user-service
-    targetURL := databaseURL + "&x-migrations-table=migrations_channels"
+	// We add 'x-migrations-table' to the URL to give this service its own tracker
+	// This prevents it from conflicting with the user-service
+	targetURL := databaseURL + "&x-migrations-table=migrations_channels"
 
-    m, err := migrate.New("file://migrations/channel-service", targetURL)
-    if err != nil {
-        log.Fatalf("migration init failed: %v", err)
-    }
-    
-    if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-        log.Fatalf("migration up failed: %v", err)
-    }
-    log.Println("Channel migrations applied successfully!")
+	m, err := migrate.New("file://migrations/channel-service", targetURL)
+	if err != nil {
+		log.Fatalf("migration init failed: %v", err)
+	}
+
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		log.Fatalf("migration up failed: %v", err)
+	}
+	log.Println("Channel migrations applied successfully!")
 }
 
 func getEnv(key, defaultValue string) string {
@@ -102,4 +102,12 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func requireEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		log.Fatalf("%s environment variable is required", key)
+	}
+	return v
 }
