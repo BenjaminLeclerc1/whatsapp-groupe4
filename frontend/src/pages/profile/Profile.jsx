@@ -4,7 +4,7 @@ import { useApp } from "../../context/AppContext";
 import "../../components/styles/profile.css";
 
 function Profile() {
-  const { getUserById, updateUser, deleteUser } = useApp();
+  const { getMe, updateMe, deleteUser } = useApp();
   const navigate = useNavigate();
 
   const [user, setUser] = useState(null);
@@ -19,7 +19,7 @@ function Profile() {
   useEffect(() => {
     const loadUser = async () => {
       if (!userId) return;
-      const data = await getUserById(userId);
+      const data = await getMe();
       if (data) {
         setUser(data);
         setFormData({
@@ -31,12 +31,12 @@ function Profile() {
       setLoading(false);
     };
     loadUser();
-  }, [userId, getUserById]);
+  }, [userId, getMe]);
 
   const handleSave = async () => {
     if (!formData.username.trim()) return;
     setSaving(true);
-    const ok = await updateUser(userId, formData);
+    const ok = await updateMe(formData);
     if (ok) {
       localStorage.setItem("username", formData.username);
       setUser((prev) => ({ ...prev, ...formData }));
@@ -83,16 +83,14 @@ function Profile() {
             </div>
             {!editing && (
               <button className="edit-profile-btn" onClick={() => setEditing(true)}>
-                <span className="material-icons-round">edit</span>
-                Modifier le profil
+                ✏️ Modifier le profil
               </button>
             )}
           </div>
 
           {success && (
             <div className="profile-success">
-              <span className="material-icons-round">check_circle</span>
-              {success}
+              ✅ {success}
             </div>
           )}
 
@@ -141,7 +139,7 @@ function Profile() {
             ) : (
               <div className="profile-details">
                 <div className="detail-row">
-                  <span className="material-icons-round detail-icon">person</span>
+                  <div className="detail-icon">👤</div>
                   <div>
                     <p className="detail-label">Nom d'utilisateur</p>
                     <p className="detail-value">{user?.username}</p>
@@ -149,7 +147,7 @@ function Profile() {
                 </div>
 
                 <div className="detail-row">
-                  <span className="material-icons-round detail-icon">email</span>
+                  <div className="detail-icon">✉️</div>
                   <div>
                     <p className="detail-label">Adresse e-mail</p>
                     <p className="detail-value">{user?.email || "Non renseigné"}</p>
@@ -157,7 +155,7 @@ function Profile() {
                 </div>
 
                 <div className="detail-row">
-                  <span className="material-icons-round detail-icon">phone</span>
+                  <div className="detail-icon">📞</div>
                   <div>
                     <p className="detail-label">Téléphone</p>
                     <p className="detail-value">{user?.telephone || "Non renseigné"}</p>
@@ -170,12 +168,10 @@ function Profile() {
 
           <div className="profile-footer">
             <button className="back-btn" onClick={() => navigate("/chats")}>
-              <span className="material-icons-round">arrow_back</span>
-              Retour aux discussions
+              ← Retour aux discussions
             </button>
             <button className="delete-account-btn" onClick={handleDelete}>
-              <span className="material-icons-round">delete_forever</span>
-              Supprimer le compte
+              🗑 Supprimer le compte
             </button>
           </div>
         </div>

@@ -144,19 +144,27 @@ func (app *App) logout(c *gin.Context) {
 }
 
 func (app *App) searchUsers(c *gin.Context) {
-	queryParam := c.Query("q")
-	var results []map[string]string
+	queryParam := strings.TrimSpace(c.Query("q"))
+	if queryParam == "" {
+		app.getAllUsers(c)
+		return
+	}
+	results := make([]map[string]string, 0, 16)
+	pattern := "%" + queryParam + "%"
 	for _, shard := range app.Shards.Shards {
-		rows, err := shard.Query(c.Request.Context(), "SELECT id, username FROM users WHERE username ILIKE $1", "%"+queryParam+"%")
+		rows, err := shard.Query(c.Request.Context(),
+			"SELECT id, username, email FROM auth_users WHERE username ILIKE $1 OR email ILIKE $1 OR telephone ILIKE $1", pattern)
 		if err != nil {
 			continue
 		}
-		defer rows.Close()
 		for rows.Next() {
-			var id, username string
-			rows.Scan(&id, &username)
-			results = append(results, map[string]string{"id": id, "username": username})
+			var id, username, email string
+			if err := rows.Scan(&id, &username, &email); err != nil {
+				continue
+			}
+			results = append(results, map[string]string{"id": id, "username": username, "email": email})
 		}
+		rows.Close()
 	}
 	c.JSON(http.StatusOK, results)
 }
@@ -164,9 +172,18 @@ func (app *App) searchUsers(c *gin.Context) {
 func (app *App) getUserByID(c *gin.Context) {
 	id := c.Param("id")
 	var user User
-	shard := app.Shards.GetShard(id)
-	err := shard.QueryRow(c.Request.Context(), "SELECT id, username, telephone, email, role, status FROM users WHERE id = $1", id).Scan(&user.ID, &user.Username, &user.Telephone, &user.Email, &user.Role, &user.Status)
-	if err != nil {
+	found := false
+	for _, shard := range app.Shards.Shards {
+		err := shard.QueryRow(c.Request.Context(),
+			"SELECT id, username, COALESCE(telephone,''), email, status FROM auth_users WHERE id = $1", id,
+		).Scan(&user.ID, &user.Username, &user.Telephone, &user.Email, &user.Status)
+		if err == nil {
+			user.Role = "user"
+			found = true
+			break
+		}
+	}
+	if !found {
 		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		return
 	}
@@ -177,25 +194,38 @@ func (app *App) updateUser(c *gin.Context) {
 	id := c.Param("id")
 	var input User
 	c.ShouldBindJSON(&input)
-	shard := app.Shards.GetShard(id)
-	shard.Exec(c.Request.Context(), "UPDATE users SET username=$1, telephone=$2, email=$3 WHERE id=$4", input.Username, input.Telephone, input.Email, id)
+	for _, shard := range app.Shards.Shards {
+		_, err := shard.Exec(c.Request.Context(), "UPDATE auth_users SET username=$1, telephone=$2, email=$3 WHERE id=$4", input.Username, input.Telephone, input.Email, id)
+		if err == nil {
+			break
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "User updated"})
 }
 
 func (app *App) deleteUser(c *gin.Context) {
 	id := c.Param("id")
-	shard := app.Shards.GetShard(id)
-	shard.Exec(c.Request.Context(), "DELETE FROM users WHERE id=$1", id)
+	for _, shard := range app.Shards.Shards {
+		_, err := shard.Exec(c.Request.Context(), "DELETE FROM auth_users WHERE id=$1", id)
+		if err == nil {
+			break
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
 }
 
 func (app *App) getAllUsers(c *gin.Context) {
-	var allUsers []User
+	allUsers := make([]User, 0, 32)
 	for _, shard := range app.Shards.Shards {
-		rows, _ := shard.Query(c.Request.Context(), "SELECT id, username, email FROM users")
+		rows, err := shard.Query(c.Request.Context(), "SELECT id, username, email FROM auth_users")
+		if err != nil {
+			continue
+		}
 		for rows.Next() {
 			var u User
-			rows.Scan(&u.ID, &u.Username, &u.Email)
+			if err := rows.Scan(&u.ID, &u.Username, &u.Email); err != nil {
+				continue
+			}
 			allUsers = append(allUsers, u)
 		}
 		rows.Close()
@@ -238,15 +268,6 @@ func requireEnv(key string) string {
 
 func newUserRouter(app *App) *gin.Engine {
 	router := gin.Default()
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-User-ID"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
-	router.OPTIONS("/*path", func(c *gin.Context) { c.AbortWithStatus(http.StatusOK) })
 
 	api := router.Group("/api/v1/users")
 	api.POST("/register", app.register)

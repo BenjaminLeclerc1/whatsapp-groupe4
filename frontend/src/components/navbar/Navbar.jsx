@@ -53,7 +53,7 @@ const Navbar = () => {
               className={`g4-nav-link ${isActive('/chats') ? 'active' : ''}`}
               onClick={() => setIsMobileOpen(false)}
             >
-              <span className="material-icons-round">chat</span>
+              <span>💬</span>
               <span>Discussions</span>
             </Link>
             <Link
@@ -61,7 +61,7 @@ const Navbar = () => {
               className={`g4-nav-link ${isActive('/contacts') ? 'active' : ''}`}
               onClick={() => setIsMobileOpen(false)}
             >
-              <span className="material-icons-round">people</span>
+              <span>👥</span>
               <span>Contacts</span>
             </Link>
           </div>
@@ -82,8 +82,8 @@ const Navbar = () => {
                   className="g4-avatar"
                 />
                 <span className="g4-username">{userName || 'Profil'}</span>
-                <span className="material-icons-round g4-chevron">
-                  {isDropdownOpen ? 'expand_less' : 'expand_more'}
+                <span className="g4-chevron">
+                  {isDropdownOpen ? '▲' : '▼'}
                 </span>
               </button>
 
@@ -106,14 +106,12 @@ const Navbar = () => {
                   <div className="g4-dropdown-divider" />
 
                   <button className="g4-dropdown-item" onClick={() => { navigate('/profile'); setIsDropdownOpen(false); }}>
-                    <span className="material-icons-round">account_circle</span>
                     Mon profil
                   </button>
 
                   <div className="g4-dropdown-divider" />
 
                   <button className="g4-dropdown-item g4-logout" onClick={handleLogout}>
-                    <span className="material-icons-round">logout</span>
                     Déconnexion
                   </button>
                 </div>
@@ -123,7 +121,7 @@ const Navbar = () => {
 
           {isLoggedIn && (
             <button className="g4-mobile-toggle" onClick={() => setIsMobileOpen(!isMobileOpen)}>
-              <span className="material-icons-round">{isMobileOpen ? 'close' : 'menu'}</span>
+              {isMobileOpen ? '✕' : '☰'}
             </button>
           )}
         </div>

@@ -65,29 +65,59 @@ const authHeaders = useMemo(() => {
     }
   }, [authHeaders, apiUrl]);
 
-  const getUserById = async (userId) => {
+  const getMe = useCallback(async () => {
+    try {
+      const res = await axios.get(`${apiUrl}/auth/me`, authHeaders);
+      return res.data;
+    } catch (err) {
+      console.error("Get Me Error:", err.message);
+    }
+  }, [authHeaders, apiUrl]);
+
+  const updateMe = useCallback(async (updateData) => {
+    try {
+      await axios.put(`${apiUrl}/auth/me`, updateData, authHeaders);
+      return true;
+    } catch (err) {
+      console.error("Update Me Error:", err.message);
+      return false;
+    }
+  }, [authHeaders, apiUrl]);
+
+  const getAuthUser = useCallback(async (userId) => {
+    try {
+      const res = await axios.get(`${apiUrl}/auth/user/${userId}`, authHeaders);
+      return res.data;
+    } catch (err) {
+      console.error("Get Auth User Error:", err.message);
+    }
+  }, [authHeaders, apiUrl]);
+
+  const getUserById = useCallback(async (userId) => {
     try {
       const res = await axios.get(`${apiUrl}/users/${userId}`, authHeaders);
       return res.data;
     } catch (err) {
       console.error("Get User Error:", err.message);
     }
-  };
+  }, [authHeaders, apiUrl]);
 
   const searchUsers = useCallback(async (query) => {
     if (!query || !query.trim()) {
-      await fetchAllUsers();
-      return;
+      setUsers([]);
+      return [];
     }
     try {
-      const res = await axios.get(`${apiUrl}/users/search?q=${encodeURIComponent(query.trim())}`, authHeaders);
-      const data = res.data;
-      setUsers(Array.isArray(data) ? data : []);
+      const res = await axios.get(`${apiUrl}/auth/search?q=${encodeURIComponent(query.trim())}`, authHeaders);
+      const data = Array.isArray(res.data) ? res.data : [];
+      setUsers(data);
+      return data;
     } catch (err) {
       console.error("Search Users Error:", err.message);
       setUsers([]);
+      return [];
     }
-  }, [authHeaders, apiUrl, fetchAllUsers]);
+  }, [authHeaders, apiUrl]);
 
   const updateUser = async (userId, updateData) => {
     try {
@@ -351,7 +381,7 @@ const markNotificationsAsRead = async (chatId) => {
       value={{
         chats, selectedChat, setSelectedChat, messages, loading, currentUserId,
         sendMessage, createChat, fetchChats, deleteMessage, fetchAllUsers,
-        getUserById, updateUser, deleteUser, users, searchUsers, updateChat, deleteChat,
+        getMe, updateMe, getAuthUser, getUserById, updateUser, deleteUser, users, searchUsers, updateChat, deleteChat,
         getHistory, notifications, fetchNotifications, markNotificationsAsRead,
       }}
     >

@@ -91,7 +91,7 @@ function Register() {
 
           {error && (
             <div className="auth-error">
-              <span className="material-icons-round" style={{ fontSize: 18 }}>error_outline</span>
+              ⚠️
               {error}
             </div>
           )}

@@ -1,6 +1,6 @@
 
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import "../../components/styles/message.css";
 import { useApp } from "../../context/AppContext";
 
@@ -21,6 +21,7 @@ const Chats = () => {
     notifications,
     markNotificationsAsRead,
     users,
+    searchUsers,
   } = useApp();
 
   const [newMessage, setNewMessage] = useState("");
@@ -32,6 +33,15 @@ const Chats = () => {
     name: "",
   });
   const [contactSearch, setContactSearch] = useState("");
+  const contactDebounceRef = useRef(null);
+
+  const handleContactSearch = useCallback((value) => {
+    setContactSearch(value);
+    if (contactDebounceRef.current) clearTimeout(contactDebounceRef.current);
+    contactDebounceRef.current = setTimeout(() => {
+      searchUsers(value);
+    }, 300);
+  }, [searchUsers]);
 
   const [openMenuId, setOpenMenuId] = useState(null);
   const [openChatActionId, setOpenChatActionId] = useState(null);
@@ -86,12 +96,7 @@ const Chats = () => {
     });
   };
 
-  const availableContacts = users.filter(
-    (u) =>
-      u.id !== currentUserId &&
-      (u.username?.toLowerCase().includes(contactSearch.toLowerCase()) ||
-        u.email?.toLowerCase().includes(contactSearch.toLowerCase()))
-  );
+  const availableContacts = users.filter((u) => u.id !== currentUserId);
 
   const handleStartChat = async (e) => {
     e.preventDefault();
@@ -106,6 +111,7 @@ const Chats = () => {
       setShowModal(false);
       setNewChatData({ participants: [], type: "private", name: "" });
       setContactSearch("");
+      searchUsers("");
     } catch (err) {
       alert("Erreur: " + err.message);
     } finally {
@@ -140,14 +146,13 @@ const onRename = (e, chat) => {
             </div>
             <div className="header-actions">
               <button className="icon-btn" onClick={() => setShowModal(true)} style={{backgroundColor: 'green', padding: '5px 9px', color:'white'}}>
-                <span className="material-icons">+ Nouveau groupe</span>
+                + Nouveau groupe
               </button>
             </div>
           </header>
 
           <div className="search-container">
             <div className="search-input-wrapper">
-              <span className="material-icons">search</span>
               <input type="text" placeholder="Rechercher une discussion" />
             </div>
           </div>
@@ -168,7 +173,7 @@ const onRename = (e, chat) => {
                     }}
                   >
                     <div className="card-avatar">
-                      <span className="material-icons">{chat.type === "group" ? "👥" : "👤"}</span>
+                      {chat.type === "group" ? "👥" : "👤"}
                     </div>
                     <div className="card-info">
                       <div className="card-row">
@@ -182,7 +187,7 @@ const onRename = (e, chat) => {
                             setOpenChatActionId(openChatActionId === chat.id ? null : chat.id);
                           }}
                         >
-                          <span className="material-icons"  style={{border: 'none', cursor:'pointer'}}>...</span>
+                          ⋯
                         </button>
                       </div>
                       {openChatActionId === chat.id && (
@@ -208,7 +213,7 @@ const onRename = (e, chat) => {
           {selectedChat ? (
             <div className="active-chat-window">
               <header className="chat-header">
-                <div className="header-avatar">{selectedChat.type === "group" ? "👥" : "👤"}</div>
+                <div className="header-avatar" style={{fontSize: '24px'}}>{selectedChat.type === "group" ? "👥" : "👤"}</div>
                 <div className="header-contact-info">
                   <h3>{selectedChat.name || "Discussion"}</h3>
                   <p>{selectedChat.participants?.length} participants</p>
@@ -216,7 +221,7 @@ const onRename = (e, chat) => {
                {/* MAIN CHAT HEADER ACTIONS */}
 <div className="header-actions">
   <button className="icon-btn" onClick={(e) => { e.stopPropagation(); setShowHeaderMenu(!showHeaderMenu); }}>
-    <span className="material-icons" style={{marginLeft: '20px', padding: '0px 10px 7px 10px'}}>...</span>
+    <span style={{marginLeft: '20px', padding: '0px 10px 7px 10px', cursor: 'pointer'}}>⋯</span>
   </button>
   
   {showHeaderMenu && (
@@ -259,7 +264,7 @@ const onRename = (e, chat) => {
                                     setOpenMenuId(openMenuId === msg.id ? null : msg.id);
                                 }}
                             >
-                              <span className="material-icons"  style={{border: 'none', backgroundColor:'#f0f2f5'}}>...</span>
+                              <span style={{border: 'none', backgroundColor:'#f0f2f5', cursor: 'pointer'}}>⋯</span>
                             </button>
                             {openMenuId === msg.id && (
                               <div className="msg-popup-menu">
@@ -280,10 +285,9 @@ const onRename = (e, chat) => {
                           </span>
                           {isSentByMe && (
                             <span 
-                              className="material-icons check-mark" 
-                              style={{ fontSize: "16px", marginLeft: "4px", color: msg.is_read ? "#53bdeb" : "#919191" }}
+                              style={{ fontSize: "14px", marginLeft: "4px", color: msg.is_read ? "#53bdeb" : "#919191" }}
                             >
-                              {msg.is_read ? "done_all" : "done"} 
+                              {msg.is_read ? "✓✓" : "✓"}
                             </span>
                           )}
                         </div>
@@ -295,7 +299,6 @@ const onRename = (e, chat) => {
               </div>
 
               <footer className="chat-input-area">
-                <span className="material-icons">insert_emoticon</span>
                 <form onSubmit={handleSend} className="input-form">
                   <input
                     type="text"
@@ -304,7 +307,7 @@ const onRename = (e, chat) => {
                     onChange={(e) => setNewMessage(e.target.value)}
                   />
                   <button type="submit" className="send-btn" style={{border:'none', backgroundColor:'white', padding: '1px 20px', cursor:'pointer'}}>
-                    <span className="material-icons">{newMessage.trim() ? "send" : "➤"}</span>
+                    ➤
                   </button>
                 </form>
               </footer>
@@ -321,13 +324,11 @@ const onRename = (e, chat) => {
 
         {/* MODAL CRÉATION */}
         {showModal && (
-          <div className="modal-backdrop" onClick={() => { setShowModal(false); setContactSearch(""); }}>
+          <div className="modal-backdrop" onClick={() => { setShowModal(false); setContactSearch(""); searchUsers(""); }}>
             <div className="modal-box" onClick={(e) => e.stopPropagation()}>
               <header className="modal-header">
                 <h2>{newChatData.type === "groupe" ? "Nouveau Groupe" : "Nouveau Message"}</h2>
-                <button onClick={() => { setShowModal(false); setContactSearch(""); }} className="close-modal-btn">
-                  <span className="material-icons-round">close</span>
-                </button>
+                <button onClick={() => { setShowModal(false); setContactSearch(""); searchUsers(""); }} className="close-modal-btn">✕</button>
               </header>
               <form onSubmit={handleStartChat} className="modal-form">
                 <div className="type-selector">
@@ -358,19 +359,18 @@ const onRename = (e, chat) => {
                 <div className="form-group">
                   <label>Sélectionner des contacts</label>
                   <div className="modal-search-wrapper">
-                    <span className="material-icons-round">search</span>
                     <input
                       type="text"
                       placeholder="Rechercher un contact..."
                       value={contactSearch}
-                      onChange={(e) => setContactSearch(e.target.value)}
+                      onChange={(e) => handleContactSearch(e.target.value)}
                     />
                   </div>
                 </div>
 
                 <div className="modal-contact-list">
                   {availableContacts.length === 0 ? (
-                    <p className="modal-empty">Aucun contact trouvé</p>
+                    <p className="modal-empty">{contactSearch.trim() ? "Aucun contact trouvé" : "Tapez un nom pour rechercher"}</p>
                   ) : (
                     availableContacts.map((user) => {
                       const isSelected = newChatData.participants.includes(user.id);
@@ -396,7 +396,7 @@ const onRename = (e, chat) => {
                             {user.email && <span className="modal-contact-email">{user.email}</span>}
                           </div>
                           <div className={`modal-check ${isSelected ? "checked" : ""}`}>
-                            {isSelected && <span className="material-icons-round">check</span>}
+                            {isSelected && "✓"}
                           </div>
                         </div>
                       );
