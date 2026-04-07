@@ -1,19 +1,22 @@
 package auth
 
 import (
+	"fmt"
 	"time"
+
 	"github.com/golang-jwt/jwt/v5"
 )
 
-var secretKey = []byte("whatsapp_secret_key") // In production, use os.Getenv("JWT_SECRET")
-
-func GenerateToken(userID, role string) (string, error) {
+func GenerateToken(userID, role, secret string) (string, error) {
+	if secret == "" {
+		return "", fmt.Errorf("JWT secret is required")
+	}
 	claims := jwt.MapClaims{
 		"user_id": userID,
 		"role":    role,
-		"exp":     time.Now().Add(time.Hour * 24).Unix(), // Token valid for 24h
+		"exp":     time.Now().Add(time.Hour * 24).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(secretKey)
+	return token.SignedString([]byte(secret))
 }
