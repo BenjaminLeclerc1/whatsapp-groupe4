@@ -101,7 +101,10 @@ func proxyHandler(targetURL string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		proxy := httputil.NewSingleHostReverseProxy(remote)
 		proxy.Director = func(req *http.Request) {
-			req.Header = c.Request.Header
+			// Clone pour ne pas muter la requête entrante et garantir l’envoi de X-User-ID vers les backends.
+			if c.Request.Header != nil {
+				req.Header = c.Request.Header.Clone()
+			}
 			req.Host = remote.Host
 			req.URL.Scheme = remote.Scheme
 			req.URL.Host = remote.Host
