@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -13,51 +14,43 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/whatsapp-groupe4/internal/channels"
 	"github.com/whatsapp-groupe4/internal/middleware"
+
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres" // required for migrate postgres driver registration
+	_ "github.com/golang-migrate/migrate/v4/source/file"       // required for migrate file source registration
 )
 
 func main() {
+	// 1. Setup Config
 	port := getEnv("PORT", "8085")
+	databaseURL := requireEnv("DATABASE_URL")
 
-	pool, err := initDB()
+	// 2. Initialize Database
+	pool, err := initDB(databaseURL)
 	if err != nil {
 		log.Fatalf("database connection failed: %v", err)
 	}
 	defer pool.Close()
 
+	// 3. Run Migrations
+	runMigrations(databaseURL)
+
+	// 4. Setup logic
 	repo := channels.NewRepository(pool)
 	svc := channels.NewService(repo)
 	handler := channels.NewHandler(svc)
 
-	router := gin.Default()
+	router := newChannelRouter(handler)
 
-	router.GET("/health", func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
-		defer cancel()
-
-		dbStatus := "connected"
-		if err := pool.Ping(ctx); err != nil {
-			dbStatus = "disconnected"
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"status":   "healthy",
-			"service":  "channel-service",
-			"database": dbStatus,
-		})
-	})
-
-	api := router.Group("/api/v1", middleware.ExtractUserID())
-	handler.RegisterRoutes(api)
-
+	// 5. Start Server (This uses port, http, time, etc.)
 	srv := &http.Server{
 		Addr:         ":" + port,
 		Handler:      router,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  120 * time.Second,
 	}
 
-	// Graceful shutdown
+	// Graceful shutdown (This uses os/signal, syscall, context)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -70,47 +63,30 @@ func main() {
 
 	<-ctx.Done()
 	log.Println("shutting down gracefully...")
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("forced shutdown: %v", err)
-	}
-
-	log.Println("Channel Service stopped")
 }
 
-func initDB() (*pgxpool.Pool, error) {
-	databaseURL := getEnv("DATABASE_URL", "postgres://whatsapp:whatsapp_secret@localhost:5432/whatsapp_db?sslmode=disable")
-
+func initDB(databaseURL string) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, err
 	}
+	return pgxpool.NewWithConfig(context.Background(), config)
+}
 
-	// Pool tuned for high concurrency
-	config.MaxConns = 50
-	config.MinConns = 10
-	config.MaxConnLifetime = time.Hour
-	config.MaxConnIdleTime = 30 * time.Minute
-	config.HealthCheckPeriod = 30 * time.Second
+func runMigrations(databaseURL string) {
+	// We add 'x-migrations-table' to the URL to give this service its own tracker
+	// This prevents it from conflicting with the user-service
+	targetURL := channelMigrationURL(databaseURL)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	pool, err := pgxpool.NewWithConfig(ctx, config)
+	m, err := migrate.New("file://migrations/channel-service", targetURL)
 	if err != nil {
-		return nil, err
+		log.Fatalf("migration init failed: %v", err)
 	}
 
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		return nil, err
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		log.Fatalf("migration up failed: %v", err)
 	}
-
-	log.Printf("PostgreSQL connected (pool: min=%d max=%d)", config.MinConns, config.MaxConns)
-	return pool, nil
+	log.Println("Channel migrations applied successfully!")
 }
 
 func getEnv(key, defaultValue string) string {
@@ -118,4 +94,29 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func requireEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		log.Fatalf("%s environment variable is required", key)
+	}
+	return v
+}
+
+func channelMigrationURL(databaseURL string) string {
+	if strings.Contains(databaseURL, "?") {
+		return databaseURL + "&x-migrations-table=migrations_channels"
+	}
+	return databaseURL + "?x-migrations-table=migrations_channels"
+}
+
+func newChannelRouter(handler *channels.Handler) *gin.Engine {
+	router := gin.Default()
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "channel-service"})
+	})
+	api := router.Group("/api/v1", middleware.ExtractUserID())
+	handler.RegisterRoutes(api)
+	return router
 }

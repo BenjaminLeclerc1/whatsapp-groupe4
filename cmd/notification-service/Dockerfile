@@ -17,8 +17,11 @@ FROM alpine:3.19
 
 WORKDIR /app
 
-# Copier le binaire compilé
+# 1. Copier le binaire compilé
 COPY --from=builder /notification-service .
+
+# 2. INDISPENSABLE: Copier le dossier migrations pour créer la table 'notifications'
+COPY --from=builder /app/migrations ./migrations
 
 EXPOSE 8083
 

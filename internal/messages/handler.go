@@ -16,14 +16,25 @@ func NewHandler(svc Service) *Handler {
 	return &Handler{svc: svc}
 }
 
+// func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
+// 	msgs := rg.Group("/messages")
+// 	{
+// 		msgs.POST("", h.SendMessage)
+// 		msgs.GET("/:id", h.GetMessage)
+// 		msgs.GET("/chat/:chatId", h.GetMessageHistory)
+// 		msgs.DELETE("/:id", h.DeleteMessage)
+// 	}
+// }
+
+// internal/messages/handler.go
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
-	msgs := rg.Group("/messages")
-	{
-		msgs.POST("", h.SendMessage)
-		msgs.GET("/:id", h.GetMessage)
-		msgs.GET("/chat/:chatId", h.GetMessageHistory)
-		msgs.DELETE("/:id", h.DeleteMessage)
-	}
+    // REMOVE THIS LINE: msgs := rg.Group("/messages")
+    // Use 'rg' directly because 'rg' is already "/api/v1/messages"
+    
+    rg.POST("", h.SendMessage)          // POST /api/v1/messages
+    rg.GET("/:id", h.GetMessage)        // GET /api/v1/messages/:id
+    rg.GET("/chat/:chatId", h.GetMessageHistory)
+    rg.DELETE("/:id", h.DeleteMessage)
 }
 
 func (h *Handler) SendMessage(c *gin.Context) {

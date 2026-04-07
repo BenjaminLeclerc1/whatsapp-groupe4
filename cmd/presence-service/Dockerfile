@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.22-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
@@ -18,8 +18,11 @@ FROM alpine:3.19
 
 WORKDIR /app
 
-# Copier le binaire compilé
+# 1. Copier le binaire compilé
 COPY --from=builder /presence-service .
+
+# 2. CRUCIAL: Copier les fichiers de migration pour la présence
+COPY --from=builder /app/migrations ./migrations
 
 EXPOSE 8083
 
