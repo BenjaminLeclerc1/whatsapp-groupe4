@@ -1,103 +1,160 @@
-# WhatsApp Groupe 4 - API Microservices
+# WhatsApp Clone - Groupe 4
 
-API WhatsApp-like construite avec Go et une architecture microservices.
+Application de messagerie instantanée inspirée de WhatsApp, construite avec une architecture microservices en Go et un frontend React.
 
 ## Architecture
 
-Le projet est composé de 5 microservices :
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              Frontend React                                  │
+│                              (localhost:3000)                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           API Gateway (:8080)                                │
+│                    Routing, Auth JWT, CORS, Proxy                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+          │              │              │              │              │
+          ▼              ▼              ▼              ▼              ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│ Auth Service │ │ User Service │ │  Chat Service│ │Message Service│ │  WS Gateway  │
+│    :8084     │ │    :8081     │ │    :8088     │ │    :8082      │ │    :8089     │
+└──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘
+          │              │              │              │              │
+          ▼              ▼              ▼              ▼              ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              Infrastructure                                  │
+│     PostgreSQL (Shard 0: :5433, Shard 1: :5434)    │    Redis (:6379)        │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-- **API Gateway** (port 8080) : Point d'entrée principal, route les requêtes vers les services appropriés
-- **User Service** (port 8081) : Gestion des utilisateurs (CRUD)
-- **Message Service** (port 8082) : Gestion des messages
-- **Presence Service** (port 8083) : Gestion de la présence des utilisateurs (online/offline/typing)
-- **Search Service** (port 8084) : Recherche de messages dans les conversations
+### Microservices
+
+| Service               | Port  | Description                                      |
+|-----------------------|-------|--------------------------------------------------|
+| API Gateway           | 8080  | Point d'entrée, authentification JWT, routing    |
+| User Service          | 8081  | Gestion des utilisateurs et profils              |
+| Message Service       | 8082  | Envoi et récupération des messages               |
+| Notification Service  | 8083  | Gestion des notifications push                   |
+| Auth Service          | 8084  | Authentification, JWT, refresh tokens            |
+| Channel Service       | 8085  | Gestion des groupes/canaux                       |
+| Presence Service      | 8086  | Statut en ligne/hors ligne des utilisateurs      |
+| Search Service        | 8087  | Recherche de messages et utilisateurs            |
+| Chat Service          | 8088  | Gestion des conversations                        |
+| WS Gateway            | 8089  | WebSocket pour la communication temps réel       |
+
+## Technologies
+
+### Backend
+- **Go 1.24** - Langage principal
+- **Gin** - Framework HTTP
+- **JWT** - Authentification stateless
+- **pgx** - Driver PostgreSQL haute performance
+- **gorilla/websocket** - Communication temps réel
+- **golang-migrate** - Migrations de base de données
+
+### Frontend
+- **React 19** - Framework UI
+- **React Router 7** - Navigation SPA
+- **Axios** - Client HTTP
+
+### Infrastructure
+- **PostgreSQL 16** - Base de données avec sharding
+- **Redis 7** - Cache et pub/sub pour WebSocket
+- **Docker & Docker Compose** - Containerisation
 
 ## Prérequis
 
-- Go 1.22+
-- Docker & Docker Compose
+- Docker Desktop (ou Docker Engine + Docker Compose)
+- Git
+
+> **Note** : Aucune installation locale de Go, Node.js ou autre n'est nécessaire. Tout s'exécute dans Docker.
 
 ## Installation
 
-### Avec Docker (recommandé)
+### 1. Cloner le repository
+
+```bash
+git clone https://github.com/votre-org/whatsapp-groupe4.git
+cd whatsapp-groupe4
+```
+
+### 2. Configurer les variables d'environnement
+
+Créer un fichier `.env` à la racine du projet :
+
+```bash
+# Base de données PostgreSQL
+POSTGRES_USER=whatsapp
+POSTGRES_PASSWORD=whatsapp_secret
+
+# Authentification JWT
+JWT_SECRET=votre-secret-jwt-securise-en-production
+
+# Mode applicatif
+APP_ENV=dev
+```
+
+### 3. Lancer l'application
 
 ```bash
 # Construire et démarrer tous les services
-docker-compose up -d
+docker compose up -d --build
 
-# Voir les logs
-docker-compose logs -f
-
-# Arrêter les services
-docker-compose down
+# Vérifier que tous les services sont up
+docker compose ps
 ```
 
-### Sans Docker
+### 4. Accéder à l'application
+
+- **Frontend** : http://localhost:3000
+- **API Gateway** : http://localhost:8080
+- **Health Check** : http://localhost:8080/health
+
+## Commandes utiles
+
+### Gestion des services
 
 ```bash
-# Télécharger les dépendances
-make deps
+# Démarrer tous les services
+docker compose up -d
 
-# Compiler tous les services
-make build
+# Arrêter tous les services
+docker compose down
 
-# Lancer chaque service (dans des terminaux séparés)
-make run-gateway
-make run-user
-make run-message
+# Redémarrer un service spécifique
+docker compose restart auth-service
+
+# Voir les logs d'un service
+docker compose logs -f api-gateway
+
+# Voir les logs de tous les services
+docker compose logs -f
 ```
 
-## Endpoints API
-
-### Health Check
+### Build et développement
 
 ```bash
-curl http://localhost:8080/health
-curl http://localhost:8081/health
-curl http://localhost:8082/health
-curl http://localhost:8083/health
-curl http://localhost:8084/health
+# Reconstruire un service après modification
+docker compose build auth-service
+docker compose up -d auth-service
+
+# Reconstruire tous les services
+docker compose build
+
+# Reconstruire sans cache
+docker compose build --no-cache
 ```
 
-### User Service
+### Base de données
 
 ```bash
-# Créer un utilisateur
-curl -X POST http://localhost:8081/api/v1/users \
-  -H "Content-Type: application/json" \
-  -d '{"username": "john", "email": "john@example.com"}'
+# Accéder à PostgreSQL (Shard 0)
+docker exec -it whatsapp-shard-0 psql -U whatsapp -d whatsapp_shard_0
 
-# Lister tous les utilisateurs
-curl http://localhost:8081/api/v1/users
-
-# Obtenir un utilisateur par ID
-curl http://localhost:8081/api/v1/users/{id}
-
-# Mettre à jour un utilisateur
-curl -X PUT http://localhost:8081/api/v1/users/{id} \
-  -H "Content-Type: application/json" \
-  -d '{"username": "john_updated"}'
-
-# Supprimer un utilisateur
-curl -X DELETE http://localhost:8081/api/v1/users/{id}
-```
-
-### Message Service
-
-```bash
-# Créer un message
-curl -X POST http://localhost:8082/api/v1/messages \
-  -H "Content-Type: application/json" \
-  -d '{"sender_id": "user-123", "content": "Hello!", "chat_id": "chat-456"}'
-
-# Lister tous les messages
-curl http://localhost:8082/api/v1/messages
-
-# Obtenir les messages d'un chat
-curl http://localhost:8082/api/v1/messages/chat/{chatId}
-
-# Supprimer un message
-curl -X DELETE http://localhost:8082/api/v1/messages/{id}
+# Accéder à Redis
+docker exec -it whatsapp-redis redis-cli
 ```
 
 ### Presence Service
@@ -176,39 +233,132 @@ curl http://localhost:8084/api/v1/search/stats
 ## Structure du projet
 
 ```
-.
-├── cmd/
-│   ├── api-gateway/      # Service API Gateway
-│   ├── user-service/     # Service utilisateurs
-│   ├── message-service/  # Service messages
-│   ├── presence-service/ # Service de présence
-│   └── search-service/   # Service de recherche
-├── docker-compose.yml    # Orchestration Docker
-├── go.mod               # Dépendances Go
-├── Makefile             # Commandes utilitaires
-└── README.md
+whatsapp-groupe4/
+├── cmd/                          # Points d'entrée des microservices
+│   ├── api-gateway/
+│   ├── auth-service/
+│   ├── chat-service/
+│   ├── message-service/
+│   ├── notification-service/
+│   ├── user-service/
+│   ├── ws-gateway/
+│   ├── channel-service/
+│   ├── presence-service/
+│   └── search-service/
+├── internal/                     # Code interne partagé
+│   ├── chats/
+│   ├── messages/
+│   ├── wsgateway/
+│   └── pkg/
+│       ├── redis/
+│       └── sharding/
+├── middleware/                   # Middlewares (auth JWT, etc.)
+│   └── auth/
+├── migrations/                   # Scripts SQL de migration
+│   ├── auth-service/
+│   ├── chat-service/
+│   ├── message-service/
+│   ├── notification-service/
+│   ├── search-service/
+│   └── user-service/
+├── frontend/                     # Application React
+│   ├── src/
+│   │   ├── api/
+│   │   ├── components/
+│   │   ├── context/
+│   │   ├── pages/
+│   │   └── services/
+│   └── public/
+├── loadtest/                     # Tests de charge K6
+├── infra/                        # Infrastructure as Code (Terraform)
+├── docker-compose.yml
+├── go.mod
+└── .env
 ```
 
-## Commandes Make
+## API Endpoints
 
-| Commande | Description |
-|----------|-------------|
-| `make build` | Compile tous les services |
-| `make run-gateway` | Lance l'API Gateway |
-| `make run-user` | Lance le User Service |
-| `make run-message` | Lance le Message Service |
-| `make run-presence` | Lance le Presence Service |
-| `make run-search` | Lance le Search Service |
-| `make docker-build` | Construit les images Docker |
-| `make docker-up` | Démarre les containers |
-| `make docker-down` | Arrête les containers |
-| `make test` | Lance les tests |
-| `make deps` | Télécharge les dépendances |
-| `make fmt` | Formate le code |
+### Authentification (publics)
 
-## Technologies
+```
+POST   /api/v1/auth/register    # Inscription
+POST   /api/v1/auth/login       # Connexion
+POST   /api/v1/auth/refresh     # Rafraîchir le token
+```
 
-- **Go 1.22** - Langage de programmation
-- **Gin** - Framework HTTP
-- **Docker** - Containerisation
-- **Alpine Linux** - Image de base légère
+### Chats (authentifié)
+
+```
+GET    /api/v1/chats            # Liste des conversations
+POST   /api/v1/chats            # Créer une conversation
+GET    /api/v1/chats/:id        # Détails d'une conversation
+```
+
+### Messages (authentifié)
+
+```
+GET    /api/v1/messages/:chatId # Messages d'une conversation
+POST   /api/v1/messages         # Envoyer un message
+```
+
+### Utilisateurs (authentifié)
+
+```
+GET    /api/v1/users/me         # Profil de l'utilisateur connecté
+GET    /api/v1/users/:id        # Profil d'un utilisateur
+PUT    /api/v1/users/me         # Modifier son profil
+```
+
+### WebSocket
+
+```
+WS     /ws?token=<jwt>          # Connexion WebSocket temps réel
+```
+
+## Tests de charge
+
+Le projet inclut des scripts K6 pour les tests de performance :
+
+```bash
+# Lancer les tests de charge
+docker compose -f loadtest/docker-compose.k6.yml up
+```
+
+## Priorités du projet
+
+### Performance
+- **Keyset pagination** pour des performances O(log n) constantes
+- **Connection pooling** PostgreSQL agressif (min=10, max=50)
+- **Sharding** de la base de données pour la scalabilité horizontale
+- **Redis** pour le cache et la coordination WebSocket
+
+### Sécurité
+- Vérification du membership avant tout accès aux données
+- Requêtes SQL paramétrées (protection injection SQL)
+- Messages d'erreur opaques (pas d'exposition d'erreurs internes)
+- Rate limiting sur les endpoints d'écriture
+- Validation stricte de tous les inputs
+
+## Déploiement Production
+
+Pour un déploiement en production :
+
+1. **Modifier les secrets** dans `.env` (JWT_SECRET, mots de passe DB)
+2. **Configurer HTTPS** via un reverse proxy (Nginx, Traefik)
+3. **Activer le mode production** : `APP_ENV=prod`
+4. **Infrastructure Terraform** disponible dans `infra/terraform/`
+
+## Contribuer
+
+1. Créer une branche depuis `dev`
+2. Faire les modifications
+3. Lancer les tests : `docker compose build`
+4. Créer une Pull Request vers `dev`
+
+## Équipe
+
+**Groupe 4** - Projet de messagerie instantanée
+
+## Licence
+
+Projet académique - Usage interne uniquement
