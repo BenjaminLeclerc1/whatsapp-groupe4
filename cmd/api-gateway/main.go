@@ -2,7 +2,9 @@ package main
 
 import (
 	"errors"
+	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -51,30 +53,30 @@ func newGatewayRouter(jwtSecret string) *gin.Engine {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	authServiceURL := getEnv("AUTH_SERVICE_URL", "http://localhost:8086")
-	userServiceURL := getEnv("USER_SERVICE_URL", "http://localhost:8081")
-	chatServiceURL := getEnv("CHAT_SERVICE_URL", "http://localhost:8088")
-	messageServiceURL := getEnv("MESSAGE_SERVICE_URL", "http://localhost:8082")
-	presenceServiceURL := getEnv("PRESENCE_SERVICE_URL", "http://localhost:8083")
-	searchServiceURL := getEnv("SEARCH_SERVICE_URL", "http://localhost:8084")
-	notificationServiceURL := getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8085")
-	channelServiceURL := getEnv("CHANNEL_SERVICE_URL", "http://localhost:8087")
+	userServiceURL := getEnv("USER_SERVICE_URL", "http://user-service:8081")
+	messageServiceURL := getEnv("MESSAGE_SERVICE_URL", "http://message-service:8082")
+	notificationServiceURL := getEnv("NOTIFICATION_SERVICE_URL", "http://notification-service:8083")
+	authServiceURL := getEnv("AUTH_SERVICE_URL", "http://auth-service:8084")
+	searchServiceURL := getEnv("SEARCH_SERVICE_URL", "http://search-service:8087")
+	presenceServiceURL := getEnv("PRESENCE_SERVICE_URL", "http://presence-service:8086")
+	channelServiceURL := getEnv("CHANNEL_SERVICE_URL", "http://channel-service:8085")
+	chatServiceURL := getEnv("CHAT_SERVICE_URL", "http://chat-service:8088")
+	wsGatewayURL := getEnv("WS_GATEWAY_URL", "http://ws-gateway:8089")
 
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "api-gateway"})
 	})
 
+	router.GET("/ws", wsProxyHandler(wsGatewayURL))
+
 	api := router.Group("/api/v1")
 	{
-		// Routes publiques (pas de JWT)
 		api.Any("/auth/*path", proxyHandler(authServiceURL))
 		api.Any("/search/*path", proxyHandler(searchServiceURL))
 		api.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 
-		// Routes users : register/login publiques, reste protégé via isPublicUserPath()
 		api.Any("/users/*path", authMiddleware(jwtSecret), proxyHandler(userServiceURL))
 
-		// Routes protégées (JWT requis)
 		protected := api.Group("/", authMiddleware(jwtSecret))
 		{
 			protected.Any("/chats", proxyHandler(chatServiceURL))
@@ -109,6 +111,7 @@ func proxyHandler(targetURL string) gin.HandlerFunc {
 			req.URL.Scheme = remote.Scheme
 			req.URL.Host = remote.Host
 			req.URL.Path = c.Request.URL.Path
+			req.URL.RawQuery = c.Request.URL.RawQuery
 
 			if userID, exists := c.Get("user_id"); exists {
 				if uid, ok := userID.(string); ok && uid != "" {
@@ -120,10 +123,49 @@ func proxyHandler(targetURL string) gin.HandlerFunc {
 	}
 }
 
+func wsProxyHandler(target string) gin.HandlerFunc {
+	u, _ := url.Parse(target)
+	return func(c *gin.Context) {
+		backend, err := net.DialTimeout("tcp", u.Host, 5*time.Second)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": "service unavailable"})
+			return
+		}
+
+		hijacker, ok := c.Writer.(http.Hijacker)
+		if !ok {
+			backend.Close()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
+		}
+
+		_ = c.Request.Write(backend)
+
+		clientConn, _, err := hijacker.Hijack()
+		if err != nil {
+			backend.Close()
+			return
+		}
+
+		go func() {
+			_, _ = io.Copy(backend, clientConn)
+			backend.Close()
+		}()
+		_, _ = io.Copy(clientConn, backend)
+		clientConn.Close()
+	}
+}
+
 func authMiddleware(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if isPublicUserPath(c.Request.URL.Path) || c.Request.Method == http.MethodOptions {
+		if c.Request.Method == "OPTIONS" {
 			c.Next()
+			return
+		}
+
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token missing"})
 			return
 		}
 

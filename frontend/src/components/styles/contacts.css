@@ -1,25 +1,18 @@
 /* =========================================
-   1. GLOBAL CONTAINER & LAYOUT
+   CONTACTS PAGE - MODERN DARK THEME
    ========================================= */
-.whatsapp-app {
-  min-height: 100vh;
-  display: flex;
-  padding: 20px;
-  background-color: #111b21; /* Dark background like WhatsApp Web */
-}
 
 .contacts-container {
   width: 100%;
-  max-width: 1000px;
-  height: 85vh;
-  background-color: #fff;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+  max-width: 1100px;
+  height: calc(100vh - 64px);
+  background: var(--g4-surface);
   display: flex;
-  flex-direction: row; /* Horizontal layout for Laptop/Tablet */
+  flex-direction: row;
   overflow: hidden;
-  border-radius: 8px;
-  margin: auto;
-  position: relative;
+  margin: 0 auto;
+  border-left: 1px solid var(--g4-border);
+  border-right: 1px solid var(--g4-border);
 }
 
 .contacts-sidebar {
@@ -27,17 +20,15 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  border-right: 1px solid #e9edef;
+  border-right: 1px solid var(--g4-border);
   min-width: 350px;
 }
 
-/* =========================================
-   2. HEADER & SEARCH
-   ========================================= */
-.sidebar-header {
-  padding: 15px 20px;
-  background: #f0f2f5;
-  border-bottom: 1px solid #e9edef;
+/* --- HEADER --- */
+.contacts-sidebar .sidebar-header {
+  padding: 16px 20px;
+  background: var(--g4-surface);
+  border-bottom: 1px solid var(--g4-border);
 }
 
 .header-title-row {
@@ -46,55 +37,65 @@
   gap: 12px;
 }
 
+.header-title-row .material-icons {
+  color: var(--g4-accent);
+  font-size: 24px;
+}
+
 .header-title-row h2 {
   font-size: 18px;
   font-weight: 600;
-  color: #111b21;
+  color: var(--g4-text);
   margin: 0;
 }
 
-.search-container {
-  padding: 8px 15px;
-  background: #fff;
-  border-bottom: 1px solid #f0f2f5;
+/* --- SEARCH BAR --- */
+.contacts-sidebar .search-container {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--g4-border);
 }
 
-.search-input-wrapper {
-  background: #f0f2f5;
-  border-radius: 8px;
+.contacts-sidebar .search-input-wrapper {
+  background: var(--g4-bg-glass);
+  border: 1px solid var(--g4-border);
+  border-radius: var(--g4-radius-sm);
   display: flex;
   align-items: center;
   padding: 0 12px;
+  transition: var(--g4-transition);
 }
 
-.search-input-wrapper input {
-  width: 100%;
-  padding: 8px;
+.contacts-sidebar .search-input-wrapper:focus-within {
+  border-color: var(--g4-accent);
+  box-shadow: 0 0 0 2px var(--g4-accent-glow);
+}
+
+.contacts-sidebar .search-input-wrapper input {
   border: none;
   background: transparent;
+  padding: 10px 10px;
+  width: 100%;
   outline: none;
   font-size: 14px;
+  color: var(--g4-text);
 }
 
-/* =========================================
-   3. CONTACT LIST
-   ========================================= */
-.chat-list {
-  flex: 1;
-  overflow-y: auto;
+.contacts-sidebar .search-input-wrapper input::placeholder {
+  color: var(--g4-text-muted);
 }
 
+/* --- CONTACT LIST --- */
 .contact-item {
   display: flex;
   align-items: center;
-  padding: 12px 16px;
-  border-bottom: 1px solid #f0f2f5;
-  transition: background 0.2s;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--g4-border);
+  transition: var(--g4-transition);
   cursor: pointer;
 }
 
 .contact-item:hover {
-  background-color: #f5f6f6;
+  background: var(--g4-surface-hover);
 }
 
 .card-avatar img {
@@ -102,29 +103,30 @@
   height: 48px;
   border-radius: 50%;
   object-fit: cover;
-  margin-right: 15px;
+  margin-right: 14px;
   flex-shrink: 0;
+  border: 2px solid var(--g4-border);
+  transition: var(--g4-transition);
 }
 
-.card-info {
-  flex: 1;
-  min-width: 0; /* Prevents overflow of long IDs */
+.contact-item:hover .card-avatar img {
+  border-color: var(--g4-accent);
 }
 
 .chat-name {
   font-weight: 500;
-  font-size: 16px;
-  color: #111b21;
+  font-size: 15px;
+  color: var(--g4-text);
   display: block;
 }
 
 .user-uuid {
   display: inline-block;
-  font-family: monospace;
+  font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 10px;
-  color: #00a884;
-  background: #e7f7f4;
-  padding: 2px 6px;
+  color: var(--g4-accent);
+  background: rgba(0, 212, 170, 0.08);
+  padding: 2px 8px;
   border-radius: 4px;
   margin-top: 4px;
   max-width: 100%;
@@ -133,180 +135,441 @@
   white-space: nowrap;
 }
 
+.user-email {
+  font-size: 13px;
+  color: var(--g4-text-muted);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .see-more-btn {
-  background: #f0f2f5;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 20px;
+  background: var(--g4-bg-glass);
+  border: 1px solid var(--g4-border);
+  padding: 8px 16px;
+  border-radius: var(--g4-radius-xl);
   font-size: 12px;
-  color: #00a884;
+  color: var(--g4-accent);
   cursor: pointer;
   font-weight: 600;
-  transition: 0.3s;
+  transition: var(--g4-transition);
+  white-space: nowrap;
 }
 
 .see-more-btn:hover {
-  background: #00a884;
-  color: white;
+  background: var(--g4-accent);
+  border-color: var(--g4-accent);
+  color: var(--g4-bg);
 }
 
 /* =========================================
-   4. USER DETAILS PANEL (RIGHT)
+   USER DETAILS PANEL
    ========================================= */
 .user-details-panel {
   flex: 1;
-  background: #fff;
+  background: var(--g4-surface);
   display: flex;
   flex-direction: column;
-  animation: slideIn 0.3s ease-out;
+  animation: panelSlideIn 0.3s ease-out;
   z-index: 10;
 }
 
+@keyframes panelSlideIn {
+  from { transform: translateX(40px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
 .details-header {
-  background: #00a884;
-  color: white;
-  padding: 15px 20px;
+  background: linear-gradient(135deg, var(--g4-accent), #00b894);
+  color: var(--g4-bg);
+  padding: 16px 20px;
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 14px;
+}
+
+.details-header h3 {
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .close-btn {
-  background: rgba(0,0,0,0.1);
+  background: rgba(0, 0, 0, 0.15);
   border: none;
   color: white;
-  font-size: 18px;
+  font-size: 16px;
   cursor: pointer;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: var(--g4-transition);
+}
+
+.close-btn:hover {
+  background: rgba(0, 0, 0, 0.25);
 }
 
 .details-content {
-  padding: 25px;
+  padding: 32px 24px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: 24px;
 }
 
 .details-avatar img {
   width: 120px;
   height: 120px;
   border-radius: 50%;
-  border: 4px solid #f0f2f5;
-  background: #f8f9fa;
+  border: 4px solid var(--g4-border);
+  background: var(--g4-bg);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 .details-info-group {
   width: 100%;
   text-align: left;
+  padding: 16px;
+  background: var(--g4-bg-glass);
+  border-radius: var(--g4-radius-sm);
+  border: 1px solid var(--g4-border);
 }
 
 .details-info-group label {
   font-size: 11px;
-  color: #00a884;
+  color: var(--g4-accent);
   font-weight: 700;
   text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .details-info-group p {
-  font-size: 16px;
-  color: #3b4a54;
-  margin: 8px 0;
+  font-size: 15px;
+  color: var(--g4-text);
+  margin: 6px 0 0;
   word-break: break-all;
 }
 
 .uuid-text {
-  font-family: monospace;
-  background: #f8f9fa;
-  padding: 10px;
-  border-radius: 5px;
-  border: 1px solid #eee;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  color: var(--g4-text-secondary);
 }
 
 .action-btn {
-  background: #00a884;
-  color: white;
+  background: linear-gradient(135deg, var(--g4-accent), #00b894);
+  color: var(--g4-bg);
   border: none;
-  padding: 15px;
-  border-radius: 8px;
+  padding: 14px;
+  border-radius: var(--g4-radius-sm);
   font-weight: 600;
+  font-size: 14px;
   cursor: pointer;
   width: 100%;
-  transition: background 0.2s;
-  margin-top: 10px;
+  transition: var(--g4-transition);
+  margin-top: 8px;
 }
 
-.action-btn:hover { background: #008f6f; }
+.action-btn:hover {
+  box-shadow: 0 4px 20px var(--g4-accent-glow);
+  transform: translateY(-1px);
+}
 
 /* =========================================
-   5. RESPONSIVE DESIGN
+   CTA BUTTON
    ========================================= */
+.cta-container {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--g4-border);
+}
 
-/* --- TABLET (Up to 900px) --- */
+.add-contact-cta {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px;
+  background: linear-gradient(135deg, var(--g4-accent), #00b894);
+  color: var(--g4-bg);
+  border: none;
+  border-radius: var(--g4-radius-sm);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--g4-transition);
+}
+
+.add-contact-cta:hover {
+  box-shadow: 0 4px 20px var(--g4-accent-glow);
+  transform: translateY(-1px);
+}
+
+.add-contact-cta .material-icons {
+  font-size: 20px;
+}
+
+/* =========================================
+   EMPTY STATE
+   ========================================= */
+.empty-contacts {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.empty-icon {
+  font-size: 56px;
+  color: var(--g4-border);
+  margin-bottom: 16px;
+}
+
+.empty-contacts p {
+  color: var(--g4-text-muted);
+  font-size: 15px;
+  margin: 0;
+}
+
+.empty-contacts .empty-hint {
+  font-size: 13px;
+  margin-top: 8px;
+  color: var(--g4-text-muted);
+  opacity: 0.7;
+}
+
+/* =========================================
+   MODAL
+   ========================================= */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-content {
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  background: var(--g4-surface);
+  border-radius: var(--g4-radius-lg);
+  border: 1px solid var(--g4-border);
+  box-shadow: var(--g4-shadow-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalSlideUp 0.3s ease-out;
+}
+
+@keyframes modalSlideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--g4-border);
+}
+
+.modal-header h3 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--g4-text);
+  margin: 0;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--g4-text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  transition: var(--g4-transition);
+}
+
+.modal-close:hover {
+  background: var(--g4-bg-glass);
+  color: var(--g4-text);
+}
+
+.modal-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--g4-border);
+}
+
+.modal-search .material-icons {
+  color: var(--g4-text-muted);
+  font-size: 20px;
+}
+
+.modal-search input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 14px;
+  color: var(--g4-text);
+}
+
+.modal-search input::placeholder {
+  color: var(--g4-text-muted);
+}
+
+.modal-results {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 200px;
+  max-height: 400px;
+}
+
+.modal-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 20px;
+  text-align: center;
+}
+
+.modal-empty .material-icons {
+  font-size: 48px;
+  color: var(--g4-border);
+  margin-bottom: 12px;
+}
+
+.modal-empty p {
+  color: var(--g4-text-muted);
+  font-size: 14px;
+  margin: 0;
+}
+
+.modal-user-row {
+  display: flex;
+  align-items: center;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--g4-border);
+  transition: var(--g4-transition);
+}
+
+.modal-user-row:hover {
+  background: var(--g4-surface-hover);
+}
+
+.modal-user-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.modal-user-info .chat-name {
+  font-size: 14px;
+}
+
+.modal-user-info .user-email {
+  font-size: 12px;
+}
+
+.modal-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--g4-bg-glass);
+  border: 1px solid var(--g4-accent);
+  color: var(--g4-accent);
+  border-radius: var(--g4-radius-xl);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: var(--g4-transition);
+}
+
+.modal-add-btn .material-icons {
+  font-size: 16px;
+}
+
+.modal-add-btn:hover {
+  background: var(--g4-accent);
+  color: var(--g4-bg);
+}
+
+/* =========================================
+   RESPONSIVE
+   ========================================= */
 @media (max-width: 900px) {
   .contacts-container {
-    max-width: 95%;
-    height: 90vh;
+    max-width: 100%;
+    border: none;
   }
 }
 
-/* --- MOBILE (Up to 768px) --- */
 @media (max-width: 768px) {
   .whatsapp-app { padding: 0; }
-  .contacts-container { 
-    height: 100vh; 
+  .contacts-container {
+    height: calc(100vh - 64px);
     border-radius: 0;
-    max-width: 100%;
   }
 
-  /* When details are open, overlay them on full screen */
   .user-details-panel {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
+    background: var(--g4-surface);
   }
 
   .contacts-sidebar {
     min-width: 100%;
   }
-
-  .details-avatar img {
-    width: 100px;
-    height: 100px;
-  }
 }
 
 /* =========================================
-   6. UTILS & ANIMATIONS
+   LOADER
    ========================================= */
-@keyframes slideIn {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
-}
-
 .loader-container {
   display: flex;
   justify-content: center;
-  padding: 50px;
+  padding: 60px;
 }
 
 .loader {
-  border: 3px solid #f3f3f3;
-  border-top: 3px solid #00a884;
+  border: 3px solid var(--g4-border);
+  border-top: 3px solid var(--g4-accent);
   border-radius: 50%;
-  width: 30px;
-  height: 30px;
-  animation: spin 1s linear infinite;
+  width: 32px;
+  height: 32px;
+  animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  to { transform: rotate(360deg); }
 }

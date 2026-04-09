@@ -8,20 +8,26 @@ function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // --- REGEX PATTERNS ---
-  // Standard email format
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  // Min 8 chars, 1 uppercase, 1 lowercase, 1 number
   const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
 
-    // ... (Your regex validation remains the same) ...
+    if (!emailRegex.test(email)) {
+      setError("Veuillez entrer une adresse email valide.");
+      return;
+    }
+    if (!passwordRegex.test(password)) {
+      setError("Le mot de passe doit contenir au moins 8 caractères, une majuscule et un chiffre.");
+      return;
+    }
 
+    setLoading(true);
     try {
       const response = await api.post("/auth/login", {
         email: email,
@@ -30,10 +36,6 @@ function Login() {
 
       console.log("Response from server:", response.data); // Log this to be 100% sure
 
-      // 🛑 THE FIX:
-      // Change from response.data.user.id (which is undefined)
-      // To response.data.user_id (which matches your Postman output)
-      // Save to localStorage
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("user_id", response.data.user?.id || response.data.user_id || "");
       console.log("Login successful!");
@@ -41,75 +43,73 @@ function Login() {
       // when you need App.js to refresh and detect the new token
       window.location.href = "/chats";
     } catch (err) {
-      console.error("Login Error:", err);
-      // This will now only show if the server actually rejects the request (401)
-      // or if the server is down (500/Network Error)
-      setError(
-        err.response?.data?.error ||
-          "Connexion échouée. Vérifiez vos identifiants.",
-      );
+      setError(err.response?.data?.error || "Connexion échouée. Vérifiez vos identifiants.");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="container22">
-      <div className="left">
-        <h1 className="title">
-          Rejoignez <span>nous</span>
-        </h1>
-        <div className="images-group">
-          <img src={logo} className="logo" alt="logo" />
+    <div className="auth-page">
+      <div className="auth-container">
+        <div className="auth-branding">
+          <img src={logo} className="brand-logo" alt="Groupe 4" />
+          <h1>Bienvenue sur <span>Groupe 4</span></h1>
+          <p>Connectez-vous pour retrouver vos conversations et vos contacts.</p>
         </div>
-      </div>
 
-      <div className="right">
-        <div className="login-card">
-          <h2>Se connecter à Groupe 4</h2>
+        <div className="auth-form-panel">
+          <h2>Connexion</h2>
+          <p className="auth-subtitle">Entrez vos identifiants pour continuer</p>
 
-          {/* Error Message Display */}
           {error && (
-            <p
-              className="error-message"
-              style={{
-                color: "#ff4d4d",
-                fontSize: "14px",
-                marginBottom: "10px",
-              }}
-            >
+            <div className="auth-error">
+              ⚠️
               {error}
-            </p>
+            </div>
           )}
 
-          <input
-            type="email"
-            placeholder="Addresse email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={{
-              borderColor: email && !emailRegex.test(email) ? "red" : "",
-            }}
-          />
+          <form className="auth-form" onSubmit={handleLogin}>
+            <div className="form-field">
+              <label>Adresse email</label>
+              <input
+                type="email"
+                placeholder="vous@exemple.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className={email && !emailRegex.test(email) ? "input-error" : ""}
+                autoComplete="email"
+              />
+            </div>
 
-          <input
-            type="password"
-            placeholder="Mot de passe"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{
-              borderColor:
-                password && !passwordRegex.test(password) ? "red" : "",
-            }}
-          />
+            <div className="form-field">
+              <label>Mot de passe</label>
+              <input
+                type="password"
+                placeholder="Votre mot de passe"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={password && !passwordRegex.test(password) ? "input-error" : ""}
+                autoComplete="current-password"
+              />
+            </div>
 
-          <button className="login-btn" onClick={handleLogin}>
-            Se connecter
-          </button>
+            <p className="auth-forgot">Mot de passe oublié ?</p>
 
-          <p className="forgot">Mot de passe oublié ?</p>
+            <button className="auth-btn-primary" type="submit" disabled={loading}>
+              {loading ? "Connexion..." : "Se connecter"}
+            </button>
 
-          <button className="create-btn" onClick={() => navigate("/register")}>
-            Créer un nouveau compte
-          </button>
+            <div className="auth-divider">ou</div>
+
+            <button
+              type="button"
+              className="auth-btn-secondary"
+              onClick={() => navigate("/register")}
+            >
+              Créer un nouveau compte
+            </button>
+          </form>
         </div>
       </div>
     </div>
